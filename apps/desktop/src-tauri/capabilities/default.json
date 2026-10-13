@@ -1,0 +1,12 @@
+{
+  "identifier": "main",
+  "description": "Main native window only",
+  "windows": [
+    "main",
+    "presence",
+    "persona-editor"
+  ],
+  "permissions": [
+    "core:default"
+  ]
+}

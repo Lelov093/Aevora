@@ -1,0 +1,17 @@
+.venv/
+.cache/
+.data/
+.logs/
+artifacts/
+docs/
+tests/
+AGENTS.md
+.env
+.env.*
+!.env.example
+**/node_modules/
+**/dist/
+**/target/
+**/__pycache__/
+.pytest_cache/
+apps/desktop/src-tauri/gen/

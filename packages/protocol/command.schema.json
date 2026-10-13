@@ -1,0 +1,4257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "command_id",
+    "type",
+    "payload"
+  ],
+  "properties": {
+    "protocol_version": {
+      "const": 1
+    },
+    "command_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "type": {
+      "enum": [
+        "GetSnapshot",
+        "Pause",
+        "Resume",
+        "CreateAgent",
+        "ListAgents",
+        "SelectAgent",
+        "GetAgent",
+        "GetPersonaHistory",
+        "EditPersona",
+        "CreateConversation",
+        "SelectConversation",
+        "ListConversations",
+        "ListMessages",
+        "GetRun",
+        "SendMessage",
+        "CancelRun",
+        "ConfigureProvider",
+        "ListMemories",
+        "GetMemory",
+        "GetMemorySettings",
+        "ListMemoryJobs",
+        "ConfigureMemory",
+        "ReviewMemory",
+        "RetryMemoryJob",
+        "EditMemory",
+        "ForgetMemory",
+        "DeleteMemory",
+        "DeleteConversation",
+        "ListConversationMemories",
+        "ListEmbeddingJobs",
+        "RetryEmbeddingJob",
+        "SearchMemories",
+        "CreateTask",
+        "ListTasks",
+        "GetTask",
+        "RetryTask",
+        "PauseTask",
+        "CancelTask",
+        "ApproveTask",
+        "RejectTask",
+        "RevokeTaskPermission",
+        "ResolveTask",
+        "PreviewTaskArtifact",
+        "CreatePlannedTask",
+        "ApproveTaskPlan",
+        "EditTaskPlan",
+        "EditTaskBody",
+        "CreateNetworkTask",
+        "EditNetworkQueries",
+        "SelectNetworkSources",
+        "ConfigureSearch",
+        "ApproveNetworkRedirect",
+        "SkipNetworkSource",
+        "ListSchedules",
+        "ConfigureScheduler",
+        "CreateSchedule",
+        "EditSchedule",
+        "CancelSchedule",
+        "DismissSchedule",
+        "CreateCommitment",
+        "GetCommitmentSource",
+        "CreateGoal",
+        "ListGoals",
+        "GetGoal",
+        "EditGoal",
+        "ChangeGoalState",
+        "DeleteGoal",
+        "LinkGoalWork",
+        "UnlinkGoalWork",
+        "GetGoalContext",
+        "GetGoalSource",
+        "RejectWorkSuggestion",
+        "SaveTaskFeedback",
+        "DeleteTaskFeedback",
+        "ListMethods",
+        "GetMethodExperience",
+        "CreateMethodProposal",
+        "EditMethodCandidate",
+        "StartMethodEvaluation",
+        "RecordMethodEvaluation",
+        "AdoptMethod",
+        "EnableMethod",
+        "DisableMethod",
+        "RollbackMethod",
+        "RejectMethod",
+        "DeleteMethod",
+        "GetProactivity",
+        "PreviewProactivityContext",
+        "ConfigureProactivity",
+        "DismissProactiveNotice",
+        "SnoozeProactiveNotice",
+        "HandleProactiveNotice",
+        "PrepareFileWork",
+        "SetConversationGoal",
+        "GetConversationWorkContext",
+        "SetGoalFollowupPolicy",
+        "GetConversationWorkResponses"
+      ]
+    },
+    "payload": {
+      "type": "object"
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "expected_revision": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "Empty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "Create": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "identity_description",
+        "communication_style"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "identity_description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "communication_style": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      }
+    },
+    "Target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "persona_id"
+      ],
+      "properties": {
+        "persona_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      }
+    },
+    "Edit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "persona_id",
+        "identity_description",
+        "communication_style"
+      ],
+      "properties": {
+        "persona_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "identity_description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "communication_style": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      }
+    },
+    "NewConversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "resume_goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": []
+    },
+    "ConversationTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "conversation_id"
+      ]
+    },
+    "MessagePage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "before_sequence": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "conversation_id"
+      ]
+    },
+    "Send": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 12000
+        },
+        "retry_of": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "goal_context": {
+          "$ref": "#/$defs/GoalContextApproval"
+        },
+        "work_suggestions": {
+          "type": "boolean"
+        },
+        "work_context": {
+          "$ref": "#/$defs/ConversationWorkApproval"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "text"
+      ]
+    },
+    "RunTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "run_id"
+      ]
+    },
+    "ProviderConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "api_key": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "chat_allowed": {
+          "type": "boolean"
+        },
+        "max_input_tokens": {
+          "type": "integer",
+          "minimum": 512,
+          "maximum": 32768
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 32,
+          "maximum": 4096
+        },
+        "extraction_allowed": {
+          "type": "boolean"
+        },
+        "extraction_max_calls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "embedding": {
+          "$ref": "#/$defs/EmbeddingConfig"
+        },
+        "selection_allowed": {
+          "type": "boolean"
+        },
+        "selection_max_calls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      },
+      "required": [
+        "base_url",
+        "model",
+        "api_key",
+        "chat_allowed",
+        "max_input_tokens",
+        "max_output_tokens"
+      ]
+    },
+    "ConversationSearch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    },
+    "MemoryFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "Candidate",
+            "Active",
+            "History"
+          ]
+        },
+        "query": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        }
+      },
+      "required": []
+    },
+    "MemoryTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "memory_id"
+      ]
+    },
+    "MemoryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "Manual",
+            "Balanced"
+          ]
+        }
+      },
+      "required": [
+        "mode"
+      ]
+    },
+    "MemoryReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "decision": {
+          "enum": [
+            "Approve",
+            "Reject"
+          ]
+        },
+        "confirm_sensitive": {
+          "type": "boolean"
+        },
+        "replace_memory_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "replace_expected_revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "memory_id",
+        "decision"
+      ]
+    },
+    "MemoryJobTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "job_id"
+      ]
+    },
+    "MemoryEdit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "memory_id",
+        "content"
+      ]
+    },
+    "ConversationDelete": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "scope": {
+          "enum": [
+            "conversation_only",
+            "selected_memories"
+          ]
+        },
+        "memory_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "uniqueItems": true,
+          "maxItems": 1000
+        },
+        "memory_revisions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "required": [
+        "conversation_id",
+        "scope"
+      ]
+    },
+    "EmbeddingConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "api_key": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "embedding_allowed": {
+          "type": "boolean"
+        },
+        "use_chat_credential": {
+          "type": "boolean"
+        },
+        "max_calls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "max_total_input_tokens": {
+          "type": "integer",
+          "minimum": 512,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "base_url",
+        "model",
+        "api_key",
+        "embedding_allowed",
+        "max_calls",
+        "max_total_input_tokens"
+      ]
+    },
+    "MemoryQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    },
+    "TaskCreate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "output_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "allow_file_outbound": {
+          "const": true
+        },
+        "schedule_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "schedule_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "goal_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "work_suggestion": {
+          "$ref": "#/$defs/WorkReference"
+        },
+        "goal_context": {
+          "$ref": "#/$defs/GoalContextApproval"
+        }
+      },
+      "required": [
+        "title",
+        "instruction",
+        "sources",
+        "output_path",
+        "allow_file_outbound"
+      ],
+      "dependentRequired": {
+        "schedule_id": [
+          "schedule_revision"
+        ],
+        "schedule_revision": [
+          "schedule_id"
+        ],
+        "goal_id": [
+          "goal_revision"
+        ],
+        "goal_revision": [
+          "goal_id"
+        ],
+        "goal_context": [
+          "goal_id",
+          "goal_revision"
+        ]
+      }
+    },
+    "TaskTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "task_id"
+      ]
+    },
+    "TaskPlan": {
+      "type": "object",
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 16,
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                  },
+                  "op": {
+                    "const": "read"
+                  },
+                  "resource": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "id",
+                  "op",
+                  "resource"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                  },
+                  "op": {
+                    "const": "generate"
+                  },
+                  "instruction": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "inputs": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "op",
+                  "instruction",
+                  "inputs"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                  },
+                  "op": {
+                    "const": "write"
+                  },
+                  "output": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "input": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "id",
+                  "op",
+                  "output",
+                  "input"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "steps"
+      ],
+      "additionalProperties": false
+    },
+    "CreatePlannedTask": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "label",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "allow_file_outbound": {
+          "const": true
+        },
+        "schedule_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "schedule_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "goal_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "method_ref": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "work_suggestion": {
+          "$ref": "#/$defs/WorkReference"
+        },
+        "goal_context": {
+          "$ref": "#/$defs/GoalContextApproval"
+        }
+      },
+      "required": [
+        "title",
+        "instruction",
+        "sources",
+        "outputs",
+        "allow_file_outbound"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "schedule_id": [
+          "schedule_revision"
+        ],
+        "schedule_revision": [
+          "schedule_id"
+        ],
+        "goal_id": [
+          "goal_revision"
+        ],
+        "goal_revision": [
+          "goal_id"
+        ],
+        "goal_context": [
+          "goal_id",
+          "goal_revision"
+        ]
+      }
+    },
+    "EditTaskPlan": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "plan": {
+          "$ref": "#/$defs/TaskPlan"
+        }
+      },
+      "required": [
+        "task_id",
+        "plan"
+      ],
+      "additionalProperties": false
+    },
+    "EditTaskBody": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32768
+        }
+      },
+      "required": [
+        "task_id",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    "TaskArtifact": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output_id": {
+          "type": "string",
+          "pattern": "^output[12]$"
+        }
+      },
+      "required": [
+        "task_id"
+      ],
+      "additionalProperties": false
+    },
+    "CreateNetworkTask": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "label",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "allow_model_outbound": {
+          "const": true
+        },
+        "allow_memory": {
+          "type": "boolean"
+        },
+        "schedule_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "schedule_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "goal_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "title",
+        "instruction",
+        "outputs",
+        "allow_model_outbound",
+        "allow_memory"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "schedule_id": [
+          "schedule_revision"
+        ],
+        "schedule_revision": [
+          "schedule_id"
+        ],
+        "goal_id": [
+          "goal_revision"
+        ],
+        "goal_revision": [
+          "goal_id"
+        ]
+      }
+    },
+    "EditNetworkQueries": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "queries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400
+          }
+        },
+        "deliverables": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "properties": {
+              "output": {
+                "type": "string",
+                "enum": [
+                  "output1",
+                  "output2"
+                ]
+              },
+              "instruction": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              }
+            },
+            "required": [
+              "output",
+              "instruction"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "task_id",
+        "queries"
+      ],
+      "additionalProperties": false
+    },
+    "SelectNetworkSources": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "source_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^S[1-9][0-9]*$"
+          }
+        }
+      },
+      "required": [
+        "task_id",
+        "source_ids"
+      ],
+      "additionalProperties": false
+    },
+    "ConfigureSearch": {
+      "type": "object",
+      "properties": {
+        "allowed": {
+          "type": "boolean"
+        },
+        "api_key": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "allowed",
+        "api_key"
+      ],
+      "additionalProperties": false
+    },
+    "ApproveNetworkRedirect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "task_id"
+      ]
+    },
+    "SkipNetworkSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "task_id"
+      ]
+    },
+    "NetworkRetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "acknowledge_network_retry": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "task_id"
+      ]
+    },
+    "CreateSchedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "task_kind": {
+          "enum": [
+            "file",
+            "network"
+          ],
+          "type": "string"
+        },
+        "due_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "time_zone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "goal_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "title",
+        "instruction",
+        "task_kind",
+        "due_at",
+        "time_zone"
+      ],
+      "dependentRequired": {
+        "goal_id": [
+          "goal_revision"
+        ],
+        "goal_revision": [
+          "goal_id"
+        ]
+      }
+    },
+    "EditSchedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schedule_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "task_kind": {
+          "enum": [
+            "file",
+            "network"
+          ],
+          "type": "string"
+        },
+        "due_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "time_zone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "schedule_id",
+        "title",
+        "instruction",
+        "task_kind",
+        "due_at",
+        "time_zone"
+      ]
+    },
+    "ScheduleTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schedule_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "schedule_id"
+      ]
+    },
+    "SchedulerConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled"
+      ]
+    },
+    "CreateCommitment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "task_kind": {
+          "enum": [
+            "file",
+            "network"
+          ],
+          "type": "string"
+        },
+        "due_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "time_zone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "source_conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "source_message_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "confirmed_independent": {
+          "type": "boolean",
+          "const": true
+        },
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "goal_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "title",
+        "instruction",
+        "task_kind",
+        "due_at",
+        "time_zone",
+        "source_conversation_id",
+        "source_message_id",
+        "confirmed_independent"
+      ],
+      "dependentRequired": {
+        "goal_id": [
+          "goal_revision"
+        ],
+        "goal_revision": [
+          "goal_id"
+        ]
+      }
+    },
+    "CommitmentTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "commitment_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "commitment_id"
+      ]
+    },
+    "GoalCreate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 120,
+          "minLength": 1
+        },
+        "objective": {
+          "type": "string",
+          "maxLength": 2000,
+          "minLength": 1
+        },
+        "success_criteria": {
+          "type": "string",
+          "maxLength": 1000,
+          "minLength": 1
+        },
+        "next_step": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "progress_note": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "confirmed_independent": {
+          "const": true
+        },
+        "source_conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "source_message_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "work_suggestion": {
+          "$ref": "#/$defs/WorkReference"
+        }
+      },
+      "required": [
+        "title",
+        "objective",
+        "success_criteria",
+        "next_step",
+        "progress_note",
+        "confirmed_independent"
+      ],
+      "dependentRequired": {
+        "source_conversation_id": [
+          "source_message_id"
+        ],
+        "source_message_id": [
+          "source_conversation_id"
+        ]
+      }
+    },
+    "GoalEdit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120,
+          "minLength": 1
+        },
+        "objective": {
+          "type": "string",
+          "maxLength": 2000,
+          "minLength": 1
+        },
+        "success_criteria": {
+          "type": "string",
+          "maxLength": 1000,
+          "minLength": 1
+        },
+        "next_step": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "progress_note": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "work_suggestion": {
+          "$ref": "#/$defs/WorkReference"
+        }
+      },
+      "required": [
+        "goal_id",
+        "title",
+        "objective",
+        "success_criteria",
+        "next_step",
+        "progress_note"
+      ]
+    },
+    "GoalTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "goal_id"
+      ]
+    },
+    "GoalState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "state": {
+          "enum": [
+            "Active",
+            "Paused",
+            "Cancelled",
+            "Completed"
+          ]
+        },
+        "confirmed_achieved": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "goal_id",
+        "state"
+      ]
+    },
+    "GoalWork": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "kind": {
+          "enum": [
+            "task",
+            "schedule"
+          ]
+        },
+        "target_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "target_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "goal_id",
+        "kind",
+        "target_id",
+        "target_revision"
+      ]
+    },
+    "GoalContextApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "goal_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "allow_outbound": {
+          "const": true
+        },
+        "tasks": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "task_id",
+              "revision"
+            ]
+          }
+        },
+        "schedules": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "schedule_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "schedule_id",
+              "revision"
+            ]
+          }
+        },
+        "feedback": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/WorkReference"
+          }
+        }
+      },
+      "required": [
+        "goal_id",
+        "goal_revision",
+        "allow_outbound",
+        "tasks",
+        "schedules"
+      ]
+    },
+    "WorkReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "revision"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "FeedbackTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "run_id"
+      ],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "delete_methods": {
+          "type": "boolean"
+        }
+      }
+    },
+    "FeedbackSave": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "run_id",
+        "note",
+        "quality"
+      ],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "quality": {
+          "type": "string",
+          "enum": [
+            "Helpful",
+            "NeedsRevision",
+            "Unsure"
+          ]
+        }
+      }
+    },
+    "ProviderBinding": {
+      "type": "object",
+      "properties": {
+        "base_url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "base_url",
+        "model",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "MethodRef": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "mode": {
+          "enum": [
+            "active",
+            "evaluation"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "proposal_id",
+        "revision",
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "Method": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "const": "preparation_update"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "applicability": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 800
+        },
+        "limits": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "procedure": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "minItems": 1,
+          "maxItems": 6
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "minItems": 1,
+          "maxItems": 6
+        }
+      },
+      "required": [
+        "family",
+        "title",
+        "applicability",
+        "rationale",
+        "limits",
+        "procedure",
+        "checks"
+      ],
+      "additionalProperties": false
+    },
+    "MethodTarget": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "proposal_id"
+      ],
+      "additionalProperties": false
+    },
+    "MethodCreate": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "feedback_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "minItems": 1,
+          "maxItems": 6
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderBinding"
+        },
+        "allow_outbound": {
+          "const": true
+        },
+        "base_method_ref": {
+          "$ref": "#/$defs/MethodRef"
+        }
+      },
+      "required": [
+        "task_id",
+        "run_id",
+        "feedback_revision",
+        "objective",
+        "criteria",
+        "provider",
+        "allow_outbound"
+      ],
+      "additionalProperties": false
+    },
+    "MethodEdit": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "method": {
+          "$ref": "#/$defs/Method"
+        }
+      },
+      "required": [
+        "proposal_id",
+        "method"
+      ],
+      "additionalProperties": false
+    },
+    "MethodEvaluation": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "baseline_task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "candidate_task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "retention_task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "improved": {
+          "type": "boolean"
+        },
+        "no_regression": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          },
+          "minItems": 1,
+          "maxItems": 6
+        },
+        "reviewer": {
+          "enum": [
+            "user",
+            "development_review"
+          ],
+          "type": "string"
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "proposal_id",
+        "baseline_task_id",
+        "candidate_task_id",
+        "retention_task_id",
+        "improved",
+        "no_regression",
+        "checks",
+        "reviewer",
+        "note"
+      ],
+      "additionalProperties": false
+    },
+    "MethodAdopt": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "allow_method_outbound": {
+          "const": true
+        }
+      },
+      "required": [
+        "proposal_id",
+        "allow_method_outbound"
+      ],
+      "additionalProperties": false
+    },
+    "ProactiveContextRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "goal_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tasks": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "task_id",
+              "revision"
+            ]
+          }
+        },
+        "schedules": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "schedule_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "schedule_id",
+              "revision"
+            ]
+          }
+        },
+        "feedback": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/WorkReference"
+          }
+        }
+      },
+      "required": [
+        "goal_id",
+        "goal_revision",
+        "tasks",
+        "schedules"
+      ]
+    },
+    "ProactivePreview": {
+      "type": "object",
+      "properties": {
+        "goal_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "minItems": 0,
+          "maxItems": 8
+        }
+      },
+      "required": [
+        "goal_ids"
+      ],
+      "additionalProperties": false
+    },
+    "ProactiveConfig": {
+      "type": "object",
+      "properties": {
+        "observe": {
+          "type": "boolean"
+        },
+        "think": {
+          "type": "boolean"
+        },
+        "notify": {
+          "type": "boolean"
+        },
+        "goal_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "minItems": 0,
+          "maxItems": 8
+        },
+        "contexts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProactiveContextRef"
+          },
+          "minItems": 0,
+          "maxItems": 8
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderBinding"
+        },
+        "quiet_start": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 23
+        },
+        "quiet_end": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 23
+        },
+        "max_daily_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "max_daily_notifications": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "cooldown_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440
+        }
+      },
+      "required": [
+        "observe",
+        "think",
+        "notify",
+        "goal_ids",
+        "contexts",
+        "provider",
+        "quiet_start",
+        "quiet_end",
+        "max_daily_calls",
+        "max_daily_notifications",
+        "cooldown_minutes"
+      ],
+      "additionalProperties": false
+    },
+    "ProactiveTarget": {
+      "type": "object",
+      "properties": {
+        "check_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "check_id"
+      ],
+      "additionalProperties": false
+    },
+    "ProactiveSnooze": {
+      "type": "object",
+      "properties": {
+        "check_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440
+        }
+      },
+      "required": [
+        "check_id",
+        "minutes"
+      ],
+      "additionalProperties": false
+    },
+    "PrepareFileWork": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "use_method": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "run_id",
+        "use_method"
+      ]
+    },
+    "ConversationGoal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "goal_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "conversation_id",
+        "goal_id"
+      ]
+    },
+    "ConversationWorkApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow_outbound": {
+          "const": true
+        },
+        "tasks": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "task_id",
+              "revision"
+            ]
+          }
+        },
+        "feedback": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/WorkReference"
+          }
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "conversation_id",
+        "tasks",
+        "feedback",
+        "allow_outbound"
+      ]
+    },
+    "GoalFollowupPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "goal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "silenced": {
+          "type": "boolean"
+        },
+        "source_message_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "goal_id",
+        "silenced"
+      ]
+    },
+    "ConversationWorkPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "run_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "maxItems": 50
+        }
+      },
+      "required": [
+        "conversation_id",
+        "run_ids"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetSnapshot"
+          }
+        }
+      },
+      "then": {
+        "required": [],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Pause"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "Resume"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateAgent"
+          }
+        }
+      },
+      "then": {
+        "required": [],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Create"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListAgents"
+          }
+        }
+      },
+      "then": {
+        "required": [],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SelectAgent"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetAgent"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetPersonaHistory"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Target"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "EditPersona"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Edit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateConversation"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/NewConversation"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SelectConversation"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ConversationTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListConversations"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ConversationSearch"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListMessages"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MessagePage"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetRun"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/RunTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SendMessage"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Send"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CancelRun"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/RunTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ConfigureProvider"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ProviderConfig"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListMemories"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MemoryFilter"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetMemory"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MemoryTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetMemorySettings"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListMemoryJobs"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ConfigureMemory"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MemoryPolicy"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ReviewMemory"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MemoryReview"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RetryMemoryJob"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MemoryJobTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "EditMemory"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MemoryEdit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ForgetMemory"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MemoryTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DeleteMemory"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MemoryTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DeleteConversation"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ConversationDelete"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListConversationMemories"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ConversationTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListEmbeddingJobs"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RetryEmbeddingJob"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MemoryJobTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SearchMemories"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MemoryQuery"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/TaskCreate"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListTasks"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/TaskTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RetryTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/NetworkRetry"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PauseTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/TaskTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CancelTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/TaskTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ApproveTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/TaskTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RejectTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/TaskTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RevokeTaskPermission"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/TaskTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ResolveTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/TaskTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PreviewTaskArtifact"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/TaskArtifact"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreatePlannedTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/CreatePlannedTask"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ApproveTaskPlan"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/TaskTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "EditTaskPlan"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/EditTaskPlan"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "EditTaskBody"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/EditTaskBody"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateNetworkTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/CreateNetworkTask"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "EditNetworkQueries"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "expected_revision",
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/EditNetworkQueries"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SelectNetworkSources"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "expected_revision",
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/SelectNetworkSources"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ConfigureSearch"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ConfigureSearch"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ApproveNetworkRedirect"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ApproveNetworkRedirect"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SkipNetworkSource"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/SkipNetworkSource"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListSchedules"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ConfigureScheduler"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/SchedulerConfig"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateSchedule"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/CreateSchedule"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "EditSchedule"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/EditSchedule"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CancelSchedule"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ScheduleTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DismissSchedule"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ScheduleTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateCommitment"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/CreateCommitment"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetCommitmentSource"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/CommitmentTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateGoal"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/GoalCreate"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListGoals"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetGoal"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/GoalTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "EditGoal"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/GoalEdit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ChangeGoalState"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/GoalState"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DeleteGoal"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/GoalTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "LinkGoalWork"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/GoalWork"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "UnlinkGoalWork"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/GoalWork"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetGoalContext"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/GoalTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetGoalSource"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/GoalTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RejectWorkSuggestion"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/RunTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SaveTaskFeedback"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/FeedbackSave"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DeleteTaskFeedback"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/FeedbackTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListMethods"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetMethodExperience"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/FeedbackTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateMethodProposal"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MethodCreate"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "EditMethodCandidate"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MethodEdit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "StartMethodEvaluation"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MethodTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RecordMethodEvaluation"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MethodEvaluation"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "AdoptMethod"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MethodAdopt"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "EnableMethod"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MethodAdopt"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DisableMethod"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MethodTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RollbackMethod"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MethodTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RejectMethod"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MethodTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DeleteMethod"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MethodTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetProactivity"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/Empty"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PreviewProactivityContext"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ProactivePreview"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ConfigureProactivity"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ProactiveConfig"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DismissProactiveNotice"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ProactiveTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SnoozeProactiveNotice"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ProactiveSnooze"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "HandleProactiveNotice"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ProactiveTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PrepareFileWork"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/PrepareFileWork"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SetConversationGoal"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ConversationGoal"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetConversationWorkContext"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ConversationTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SetGoalFollowupPolicy"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/GoalFollowupPolicy"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetConversationWorkResponses"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ConversationWorkPage"
+          }
+        }
+      }
+    }
+  ]
+}
