@@ -235,15 +235,10 @@ impl Speech {
             }
             Some("task") => {
                 let task=r.command(&json!({"protocol_version":1,"command_id":Uuid::new_v4().to_string(),"type":"GetTask","agent_id":agent,"payload":{"task_id":id}}))?["data"].clone();
-                let state = match task["state"].as_str().unwrap_or("") {
-                    "Completed" => "执行已完成，可查看保存回执；这不代表长期目标已经达成",
-                    "Unknown" => "执行结果未知，需要独立核对",
-                    "AwaitingApproval" => "等待你审批",
-                    "Running" => "正在执行",
-                    "Failed" => "执行失败",
-                    "Cancelled" => "已取消",
-                    _ => "请打开任务查看当前状态",
-                };
+                let states: Value = serde_json::from_str(include_str!("../../../../packages/protocol/work-states.json"))
+                    .map_err(|_| "工作状态资源不可用")?;
+                let state = if task["state"] == "Completed" { "执行已完成，可查看保存回执；这不代表长期目标已经达成" }
+                    else { states["task"][task["state"].as_str().unwrap_or("")]["label"].as_str().unwrap_or("请打开任务查看当前状态") };
                 Ok(format!(
                     "任务：{}。{}。",
                     task["title"].as_str().unwrap_or("文件工作"),
@@ -287,6 +282,7 @@ impl Speech {
                 );
                 controller.usage(&o.id, json!({"run_task_attempted":true}))?;
                 write(&mut ws, request.clone())?;
+                let mut events = vec![];
                 let mut segments = BTreeMap::new();
                 let mut started = false;
                 let mut finished = false;
@@ -331,6 +327,7 @@ impl Speech {
                             if e["header"]["task_id"] != o.id {
                                 return Err("语音服务返回了其他轮次的数据".into());
                             }
+                            events.push(e.clone());
                             if let Some(u) = e["payload"].get("usage") {
                                 controller
                                     .usage(&o.id, json!({"usage":u,"usage_state":"reported"}))?;
@@ -380,6 +377,7 @@ impl Speech {
                     }
                 })();
                 let _ = ws.close(None);
+
                 result
             })();
             controller.finish(&app, &o, result);
@@ -437,6 +435,7 @@ impl Speech {
                 );
                 controller.usage(&o.id, json!({"run_task_attempted":true}))?;
                 write(&mut ws, request.clone())?;
+                let mut events = vec![];
                 let mut started = false;
                 let mut pcm_tail = vec![];
                 let began = Instant::now();
@@ -495,6 +494,7 @@ impl Speech {
                                 if e["header"]["task_id"] != o.id {
                                     return Err("音频轮次不匹配".into());
                                 }
+                                events.push(e.clone());
                                 if let Some(u) = e["payload"].get("usage") {
                                     controller.usage(
                                         &o.id,
@@ -558,6 +558,7 @@ impl Speech {
                 })();
                 sink.stop();
                 let _ = ws.close(None);
+
                 result
             })();
             *o.sink.lock().unwrap() = None;

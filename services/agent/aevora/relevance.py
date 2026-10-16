@@ -5,9 +5,15 @@ from .errors import DomainError
 from .gateway import ModelGateway
 from .context import estimate_tokens
 
-VERSION = "memory-relevance-v3"
+VERSION = "memory-relevance-v4"
 POLICY = (
     "Select memory facts that directly answer the user's current query or materially support the requested task. "
+    "Ordinary companionship, sharing interests, discussing feelings or ideas are also valid intents. "
+    "For these intents, select experiences or interaction understandings that materially help engage with what "
+    "the user is saying, even when no factual question or task is asked. A related past exchange can help "
+    "understand the present topic; it must not become a personality diagnosis or proof of current feelings. "
+    "Do not select unrelated experiences just to sound familiar. Current wishes override earlier preferences. "
+    "Respect evidence_kind, interaction kind, time and scope; an agent inference stays tentative. "
     "A shared topic or similar words alone do not make a fact useful. A fact about a different property "
     "cannot answer the requested property. Personal properties belong to distinct subjects: require "
     "both the same subject and the requested property; do not infer a user's choice for one subject "
@@ -46,7 +52,9 @@ def parse(text, count):
 
 def messages(query, candidates):
     return [{"role": "system", "content": POLICY}, {"role": "user", "content": json.dumps({
-        "query": query, "candidates": [{"position": i, "property": row.get("subject_key"), "content": row["content"]}
+        "query": query, "candidates": [{"position": i, "property": row.get("subject_key"), "content": row["content"],
+            **{k: row[k] for k in ('type', 'evidence_kind', 'valid_from', 'valid_until', 'scope') if k in row},
+            'interaction_context': json.loads(row['interaction_context']) if isinstance(row.get('interaction_context'), str) else row.get('interaction_context', {})}
                                       for i, row in enumerate(candidates)]}, ensure_ascii=False)}]
 
 

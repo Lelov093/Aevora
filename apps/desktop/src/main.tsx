@@ -1,3 +1,4 @@
+import type {WorkActivity} from './work-state';
 import {SpeechSettings,type SpeechView} from './voice';
 import {PresenceSettings,PresenceApp} from './presence';
 import type {WorkResponse} from './work';
@@ -27,7 +28,7 @@ type Persona = { agent_id: string; persona_id: string; revision: number; identit
 type Agent = { agent_id: string; name: string; persona_id: string; current_persona_revision: number;
   created_at: string; persona: Persona };
 type AgentSummary = Pick<Agent, "agent_id" | "name" | "current_persona_revision"> & {last_active_at?:string};
-export type Snapshot = { speech?:SpeechView; proactivity?:ProactivityView|null;goals?:GoalSummary[]; scheduler?:ScheduleView; scheduler_error?:string|null; runtime_state: string; revision: number; sequence: number; schema_version: number;
+export type Snapshot = { work_activity?:WorkActivity; speech?:SpeechView; proactivity?:ProactivityView|null;goals?:GoalSummary[]; scheduler?:ScheduleView; scheduler_error?:string|null; runtime_state: string; revision: number; sequence: number; schema_version: number;
   deleted_conversations?:{agent_id:string;conversation_id:string}[];
   agents: AgentSummary[]; selected_agent_id: string | null; selected_agent: Agent | null; chat: ChatSnapshot | null; provider: Provider; extraction: Extraction; embedding:Embedding; live_runs: LiveRun[]; provider_store_error?:string; search?:Search };
 export type Host = { status: string; core_pid: number | null; restart_count: number; error: string | null };
@@ -136,10 +137,11 @@ function App() {
       setHost(status); sequence.current = next.sequence; setSnapshot(next);
       for(const deleted of next.deleted_conversations??[])eraseConversationDraft(deleted.agent_id,deleted.conversation_id);
       setError(previous => previous.includes("Core unavailable") || previous.includes("Core connection unavailable") ? "" : previous);
+      void invoke("frontend_snapshot", {revision:next.revision});
     } catch(e) {setHost(await invoke<Host>("host_status"));setError(message(e));}
   }
   useEffect(() => {
-    void refresh();
+    void invoke("frontend_ready"); void refresh();
     const timer = setInterval(() => void refresh(),3000);
     let pending: ReturnType<typeof setTimeout> | undefined;
     const listener = listen("runtime-event", () => {if(!pending)pending=setTimeout(()=>{pending=undefined;void refresh();},100);});
@@ -148,6 +150,17 @@ function App() {
     const controlError = listen<string>("runtime-control-error", event => setError(event.payload));
     return () => {clearInterval(timer);if(pending)clearTimeout(pending);void listener.then(off=>off());void controlError.then(off=>off());void speechEvent.then(off=>off());void presenceEvent.then(off=>off());};
   }, []);
+  useEffect(() => {
+    if(snapshot) void invoke("frontend_identity", {view: {
+      window:getCurrentWindow().label, sequence:snapshot.sequence, agents:snapshot.agents,
+      runtime_state:snapshot.runtime_state, runtime_revision:snapshot.revision, selected_agent:snapshot.selected_agent,
+      rendered_agent_id:document.getElementById("agent-id")?.textContent ?? null,
+      alerts:Array.from(document.querySelectorAll('[role="alert"]')).map(el=>el.textContent),
+      chat:snapshot.chat,live_runs:snapshot.live_runs,
+      rendered_messages:document.getElementById("chat-messages")?.textContent,
+      edit_description:(document.getElementById("edit-description") as HTMLTextAreaElement|null)?.value
+    }});
+  }, [snapshot,creating,settings]);
   async function act<T>(command: Command, reportError = true) {
     setBusy(true);setError("");
     try {const data=await send<T>(command);await refresh();return data;}
@@ -182,9 +195,10 @@ function App() {
     if(!v.agent_id)return;
     if(selected?.agent_id!==v.agent_id)await act({...envelope(),type:'SelectAgent',agent_id:v.agent_id,payload:{}});
     if(v.conversation_id&&snapshot?.chat?.selected_conversation_id!==v.conversation_id)await act({...envelope(),type:'SelectConversation',agent_id:v.agent_id,payload:{conversation_id:v.conversation_id}});
+    if(v.view_goal_id){const fresh=await send<Snapshot>({...envelope(),type:'GetSnapshot',payload:{}});const target=v.conversation_id??fresh.chat?.selected_conversation_id??null;openTasks(undefined,undefined,'goals',v.view_goal_id,target);if(!target)navigate('tasks');return;}
     if(v.goal_id){const g=await send<Goal>({...envelope(),type:'GetGoal',agent_id:v.agent_id,payload:{goal_id:v.goal_id}});await act({...envelope(),type:'CreateConversation',agent_id:v.agent_id,payload:{resume_goal_id:g.goal_id}});navigate('chat');return;}
-    if(v.work_run_id){const fresh=await send<Snapshot>({...envelope(),type:'GetSnapshot',payload:{}});let w=fresh.chat?.work?.find(w=>w.run_id===v.work_run_id);if(!w)throw new Error('此需求来源已改变，请在对话中重新确认。');if(w.state==='None'&&w.can_prepare_file)w=await act<WorkResponse>({...envelope(),type:'PrepareFileWork',agent_id:v.agent_id,expected_revision:w.revision,payload:{run_id:w.run_id,use_method:false}});if(w.state!=='Pending'||w.suggestion?.kind!=='file_task')throw new Error('当前需求不能直接准备文件任务，请查看原对话。');const g=w.context_goal_id?await send<Goal>({...envelope(),type:'GetGoal',agent_id:v.agent_id,payload:{goal_id:w.context_goal_id}}):null;setWorkSeed({work:w,goal:g});openTasks(undefined,undefined,undefined,undefined,fresh.chat?.selected_conversation_id??null);return;}
-    if(v.pane==='tasks'){const fresh=await send<Snapshot>({...envelope(),type:'GetSnapshot',payload:{}});openTasks(v.schedule_id,v.task_id,undefined,undefined,fresh.chat?.selected_conversation_id??null);}else navigate('chat');
+    if(v.work_run_id){const fresh=await send<Snapshot>({...envelope(),type:'GetSnapshot',payload:{}});let w=fresh.chat?.work?.find(w=>w.run_id===v.work_run_id);if(!w)throw new Error('此需求来源已改变，请在对话中重新确认。');if(w.state==='None'&&w.can_prepare_file)w=await act<WorkResponse>({...envelope(),type:'PrepareFileWork',agent_id:v.agent_id,expected_revision:w.revision,payload:{run_id:w.run_id,use_method:false}});if(w.state!=='Pending'||!['file_task','agent_task'].includes(w.suggestion?.kind??''))throw new Error('当前需求不能直接准备文件任务，请查看原对话。');const g=w.context_goal_id?await send<Goal>({...envelope(),type:'GetGoal',agent_id:v.agent_id,payload:{goal_id:w.context_goal_id}}):null;setWorkSeed({work:w,goal:g});openTasks(undefined,undefined,undefined,undefined,fresh.chat?.selected_conversation_id??null);return;}
+    if(v.pane==='tasks'){const fresh=await send<Snapshot>({...envelope(),type:'GetSnapshot',payload:{}});openTasks(v.schedule_id,v.task_id,undefined,undefined,fresh.chat?.selected_conversation_id??null);if(!fresh.chat?.selected_conversation_id)navigate('tasks');}else navigate('chat');
   };
 
   function taskPanel(embedded=false){
@@ -218,15 +232,16 @@ function App() {
       {selected&&!sidebarCollapsed&&<Divider panel={navigationWidth} side="left" label="调节左侧导航宽度"/>}
       <div className="main-area">
         {snapshot?.scheduler_error&&<p className="notice" role="alert">定时提醒暂时无法保存触发结果，请检查本机状态；待触发约定仍保留。</p>}
-        {selected&&<ProactiveNotices agentId={selected.agent_id} value={snapshot?.proactivity} disabled={disabled} execute={act} continueGoal={id=>{void send<Goal>({...envelope(),type:'GetGoal',agent_id:selected.agent_id,payload:{goal_id:id}}).then(g=>resumeGoal(g)).catch(e=>setError(message(e)));}}/>}
+        {selected&&<ProactiveNotices viewWork={id=>{openTasks(undefined,undefined,'goals',id);if(!snapshot?.chat?.selected_conversation_id)navigate('tasks');}} agentId={selected.agent_id} value={snapshot?.proactivity} disabled={disabled} execute={act} continueGoal={id=>{void send<Goal>({...envelope(),type:'GetGoal',agent_id:selected.agent_id,payload:{goal_id:id}}).then(g=>resumeGoal(g)).catch(e=>setError(message(e)));}}/>}
+        {snapshot?.work_activity?.primary&&<div id="current-work-state" className="notice" aria-live="polite"><span>{snapshot.work_activity.primary.title} · {snapshot.work_activity.primary.label}</span><button className="secondary" onClick={()=>void (async()=>{const w=snapshot.work_activity!.primary!;const cid=w.conversation_id??snapshot.chat?.selected_conversation_id??null;if(w.conversation_id&&selected&&w.conversation_id!==snapshot.chat?.selected_conversation_id)await act({...envelope(),type:'SelectConversation',agent_id:selected.agent_id,payload:{conversation_id:w.conversation_id}});openTasks(undefined,w.kind==='task'?w.id:undefined,w.kind==='execution'?'goals':'tasks',w.goal_id??undefined,cid);if(!cid)navigate('tasks');})().catch(e=>setError(message(e)))}>查看实际工作</button></div>}
         {snapshot?.scheduler?.items.some(s=>s.state==='Ready')&&pane!=='tasks'&&<div id="schedule-ready-notice" className="notice" aria-live="polite">{selected?.name} 有 {snapshot.scheduler.items.filter(s=>s.state==='Ready').length} 条到期约定等待处理。<button className="secondary" id="open-due-schedules" onClick={()=>openTasks(snapshot.scheduler?.items.find(s=>s.state==='Ready')?.schedule_id)}>查看时间约定</button></div>}
         {(error||host?.error)&&<div role="alert" className="global-error"><span>{error||host?.error}</span><button className="text-button" onClick={()=>{setError("");void refresh();}}>重新检查</button></div>}
         {!snapshot?<div className="empty-state"><span className="brand-mark large">a</span><h1>正在连接 Aevora</h1><p>正在载入本机的身份与对话。</p></div>:
         !selected?<div className="empty-state welcome"><span className="brand-mark large">a</span><p className="eyebrow">YOUR PERSONAL AI</p><h1>从一个属于你的身份开始</h1><p>为你的 Agent 取一个名字，定义它最初的表达方式。<br/>身份与对话会保存在这台设备上。</p><button id="first-agent" onClick={()=>setCreating(true)}><Icon name="plus"/>创建你的 Agent</button></div>:
-        pane==="tasks"?<div className="all-items"><button id="return-chat" className="text-button" onClick={()=>navigate("chat")}>← 返回当前对话</button>{taskPanel()}</div>:pane==="memory"?<MemoryCenter initialView={memoryView} key={selected.agent_id} agentId={selected.agent_id} extraction={snapshot.extraction??{}} embedding={snapshot.embedding??{}} sequence={snapshot.sequence} disabled={disabled} runtimeState={snapshot.runtime_state} execute={act} read={send} openConversation={openConversation}/>:null}
+        pane==="tasks"?<div className="all-items"><button id="return-chat" className="text-button" onClick={()=>navigate("chat")}>← 返回当前对话</button>{taskPanel()}</div>:pane==="memory"?<MemoryCenter initialView={memoryView} key={selected.agent_id} agentId={selected.agent_id} extraction={snapshot.extraction??{}} embedding={snapshot.embedding??{}} sequence={snapshot.sequence} disabled={disabled} runtimeState={snapshot.runtime_state} execute={act} read={send} openTask={id=>openTasks(undefined,id)} openConversation={openConversation}/>:null}
         {selected&&snapshot?.chat&&<div className="chat-mounted" hidden={pane!=="chat"}>
         <ChatPanel key={selected.agent_id+":"+snapshot.chat.selected_conversation_id+":"+snapshot.chat.erasure_sequence} agentId={selected.agent_id} agentName={selected.name} chat={snapshot.chat}
-          live={snapshot.live_runs} provider={snapshot.provider} disabled={disabled} execute={act} read={send} openProvider={openProvider} openMemory={()=>{setMemoryView("processing");navigate("memory");}} openTasks={openTasks} newConversation={newConversation} scheduler={snapshot.scheduler} goals={snapshot.goals??[]} goalSeedId={goalSeed?.agent_id===selected.agent_id&&goalSeed.conversation_id===snapshot.chat.selected_conversation_id?goalSeed.goal_id:null} sequence={snapshot.sequence} prepareWork={v=>{setWorkSeed(v);openTasks();}} prepareLearn={(task_id,run_id)=>{setLearnSeed({task_id,run_id});openTasks();}} locateMessage={locateMessage} workRequest={focusConversation===snapshot.chat.selected_conversation_id?workRequest:0} workPanel={pane==='chat'?<><div className="work-expand"><button className="text-button" id="all-items-overview" onClick={()=>navigate('tasks')}>所有事项 / 展开详情 ↗</button></div>{taskPanel(true)}</>:null}/></div>}
+          live={snapshot.live_runs} provider={snapshot.provider} search={snapshot.search} disabled={disabled} execute={act} read={send} openProvider={openProvider} openMemory={()=>{setMemoryView("processing");navigate("memory");}} openTasks={openTasks} newConversation={newConversation} scheduler={snapshot.scheduler} goals={snapshot.goals??[]} goalSeedId={goalSeed?.agent_id===selected.agent_id&&goalSeed.conversation_id===snapshot.chat.selected_conversation_id?goalSeed.goal_id:null} sequence={snapshot.sequence} prepareWork={v=>{setWorkSeed(v);openTasks();}} prepareLearn={(task_id,run_id)=>{setLearnSeed({task_id,run_id});openTasks();}} locateMessage={locateMessage} workRequest={focusConversation===snapshot.chat.selected_conversation_id?workRequest:0} workPanel={pane==='chat'?<><div className="work-expand"><button className="text-button" id="all-items-overview" onClick={()=>navigate('tasks')}>所有事项 / 展开详情 ↗</button></div>{taskPanel(true)}</>:null}/></div>}
       </div>
     </div>
     <Modal open={agentMenu} close={()=>setAgentMenu(false)} title="你的 Agents" id="agents-dialog">

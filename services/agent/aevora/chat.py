@@ -65,7 +65,7 @@ class ChatRuntime:
                 import json
                 with self.store.connect() as db:
                     source = db.execute("SELECT content,sequence FROM messages WHERE message_id=? AND agent_id=?", (run["input_message_id"], aid)).fetchone()
-                memories, recalled = await self.recall.prepare(aid, source[0])
+                memories, recalled = await self.recall.prepare(aid, source[0], conversation_id=run['conversation_id'])
                 with self.store.transaction() as db:
                     latest = self.store.conversation.run(db, aid, rid)
                     self.store.conversation.target(db, aid, run["conversation_id"])
@@ -77,9 +77,15 @@ class ChatRuntime:
                     projection = self.store.goals.approved_context(db, aid, approval) if approval else None
                     work_approval = latest['context'].get('work_context')
                     work_projection = approved_work(self.store, db, aid, run['conversation_id'], work_approval) if work_approval else None
+                    from .interaction_trial import references as trial_references
+                    trial = latest['context'].get('interaction_trial')
+                    trial_refs = trial_references(self.store, db, aid, trial, config) if trial else None
                     messages, refs = build_context(db, self.store.identity.profile(db, aid), run["conversation_id"], source[0],
                         config, latest["context"].get("history_before_sequence", source["sequence"]), memories, recalled,
-                        input_timezone=self.store.input_timezone, goal_projection=projection, work_suggestions=work_enabled, work_projection=work_projection)
+                        input_timezone=self.store.input_timezone, goal_projection=projection, work_suggestions=work_enabled, work_projection=work_projection,
+                        interaction_refs=trial_refs)
+                    if trial:
+                        refs['interaction_trial'] = trial
                     if work_enabled:
                         refs['work_version'] = WORK_VERSION
                     refs["input_message_id"] = run["input_message_id"]
@@ -95,8 +101,10 @@ class ChatRuntime:
                     self.store.goals.approved_context(db, aid, latest['context']['goal_context'])
                 if latest['context'].get('work_context'):
                     approved_work(self.store, db, aid, run['conversation_id'], latest['context']['work_context'])
-                if latest['context'].get('method_context'):
-                    self.store.evolution.resolve(db, aid, latest['context']['method_context'])
+                if latest['context'].get('interaction_trial'):
+                    from .interaction_trial import approve as approve_trial
+                    approve_trial(self.store, db, aid, latest['context']['interaction_trial'], self.gateway.ready())
+                self.store.evolution.check_context(db, aid, latest['context'])
                 refs = latest["context"] | {"request_sent": True}
                 import json
                 db.execute("UPDATE runs SET context=? WHERE run_id=?", (json.dumps(refs), rid))
@@ -113,6 +121,9 @@ class ChatRuntime:
                     raise DomainError("BudgetExceeded", "Provider output exceeded the local text limit")
                 live["text"] += delta
                 self.broadcast({"type": "RunDelta", **live})
+                if delta:
+                    self.store.probe_point("chat.delta", {"agent_id": aid, "run_id": rid,
+                        "text": live["text"], "metadata": metadata})
             if work_enabled:
                 await self.gateway.stream(config, messages, consume, metadata, response_format={'type': 'json_object'})
             else:
@@ -138,8 +149,14 @@ class ChatRuntime:
             if rid in self.live and self.live[rid]["state"] == "Running":
                 text = self.live[rid]["text"]
                 try:
+                    if state == "Completed":
+                        self.store.probe_point("chat.before_commit", {"agent_id": aid, "run_id": rid,
+                            "text": text, "metadata": metadata})
                     result = self.store.conversation.finish(aid, rid, state, text, metadata, error,
                         work_raw=self.live[rid].get('raw_text', ''))
+                    if state == "Completed":
+                        self.store.probe_point("chat.after_commit", {"agent_id": aid, "run_id": rid,
+                            "text": text, "metadata": metadata})
                     self.broadcast({"type": "RunSaved", "run": result})
                     del self.live[rid]
                 except Exception:

@@ -1,0 +1,130 @@
+{
+  "task": {
+    "Searching": {
+      "label": "正在搜索",
+      "category": "working"
+    },
+    "ReadingWeb": {
+      "label": "正在读取来源",
+      "category": "working"
+    },
+    "AwaitingSources": {
+      "label": "等待来源选择",
+      "category": "attention"
+    },
+    "AwaitingRedirectApproval": {
+      "label": "等待跳转审批",
+      "category": "attention"
+    },
+    "Planning": {
+      "label": "正在制定计划",
+      "category": "working"
+    },
+    "Running": {
+      "label": "正在处理",
+      "category": "working"
+    },
+    "AwaitingPlanApproval": {
+      "label": "等待计划审批",
+      "category": "attention"
+    },
+    "Superseded": {
+      "label": "已被新计划替代",
+      "category": "finished"
+    },
+    "Created": {
+      "label": "准备工作",
+      "category": "working"
+    },
+    "Generating": {
+      "label": "正在生成行动",
+      "category": "working"
+    },
+    "AwaitingApproval": {
+      "label": "等待你的审批",
+      "category": "attention"
+    },
+    "Executing": {
+      "label": "正在执行已批准行动",
+      "category": "working"
+    },
+    "Completed": {
+      "label": "已完成",
+      "category": "finished"
+    },
+    "Partial": {
+      "label": "部分完成",
+      "category": "finished"
+    },
+    "Blocked": {
+      "label": "受阻，等待处理",
+      "category": "finished"
+    },
+    "AwaitingInput": {
+      "label": "等待补充信息",
+      "category": "attention"
+    },
+    "Failed": {
+      "label": "失败",
+      "category": "finished"
+    },
+    "Paused": {
+      "label": "已暂停",
+      "category": "paused"
+    },
+    "Cancelled": {
+      "label": "已取消",
+      "category": "finished"
+    },
+    "Rejected": {
+      "label": "已拒绝",
+      "category": "finished"
+    },
+    "Revoked": {
+      "label": "权限已撤销",
+      "category": "finished"
+    },
+    "NotExecuted": {
+      "label": "已确认未执行",
+      "category": "finished"
+    },
+    "NeedsAttention": {
+      "label": "需要核对或处理",
+      "category": "attention"
+    }
+  },
+  "execution": {
+    "Planning": {
+      "label": "正在制定计划",
+      "category": "working"
+    },
+    "AwaitingPlanApproval": {
+      "label": "等待审阅计划",
+      "category": "attention"
+    },
+    "Running": {
+      "label": "正在推进",
+      "category": "working"
+    },
+    "Waiting": {
+      "label": "等待条件或后续行动",
+      "category": "waiting"
+    },
+    "NeedsAttention": {
+      "label": "需要处理",
+      "category": "attention"
+    },
+    "Paused": {
+      "label": "已暂停",
+      "category": "paused"
+    },
+    "Revoked": {
+      "label": "许可已撤销",
+      "category": "finished"
+    },
+    "Completed": {
+      "label": "本轮工作已完成，目标达成待你确认",
+      "category": "finished"
+    }
+  }
+}

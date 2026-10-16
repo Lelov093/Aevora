@@ -271,8 +271,6 @@ pub fn remember_later(app: AppHandle) {
     });
 }
 
-
-
 pub fn sync_later(app: AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
         if let Err(e) = app.state::<Arc<Presence>>().sync(&app) {

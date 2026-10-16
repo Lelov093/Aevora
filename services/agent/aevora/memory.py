@@ -79,8 +79,12 @@ class MemoryRepository:
                 message = db.execute("SELECT message_id,conversation_id,role,content,created_at,source_timezone FROM messages WHERE message_id=? AND agent_id=? AND content<>''",
                                      (source["source_id"], aid)).fetchone() if source["source_type"] == "message" else None
                 source.update(available=message is not None or source["source_type"] == "user_edit", message=dict(message) if message else None)
+                if source['source_type'] == 'task_run':
+                    task = db.execute('SELECT t.task_id,t.title,r.run_id,r.state FROM task_runs r JOIN tasks t USING(task_id) WHERE t.agent_id=? AND r.run_id=?', (aid,source['source_id'])).fetchone()
+                    source.update(available=task is not None, task=dict(task) if task else None)
                 sources.append(source)
-            revisions.append(dict(rev) | {"sources": sources, "temporal_validation": json.loads(rev["temporal_validation"])})
+            revisions.append(dict(rev) | {"sources": sources, "temporal_validation": json.loads(rev["temporal_validation"]),
+                                         "interaction_context": json.loads(rev["interaction_context"])})
         key = topic_key(row["subject_key"], revisions[0]["content"])
         conflicts = [{k: r[k] for k in ("memory_id", "revision", "content")} for r in db.execute("""SELECT m.memory_id,m.revision,m.subject_key,r.content FROM memories m
             JOIN memory_revisions r ON r.revision_id=m.current_revision_id
@@ -200,10 +204,11 @@ class MemoryRepository:
     def insert_revision(self, db, rid, mid, aid, number, item, reason, jid, supersedes=None, actor="memory_worker"):
         db.execute("""INSERT INTO memory_revisions(revision_id,memory_id,agent_id,revision_number,content,importance,confidence,
             sensitivity,evidence_kind,edited_by,change_reason,recorded_at,valid_from,valid_until,scope,supersedes_revision_id,
-            policy_reason,job_id,temporal_validation) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            policy_reason,job_id,temporal_validation,interaction_context) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                    (rid, mid, aid, number, item["content"], item["importance"], item["confidence"], item["sensitivity"],
                     item["evidence_kind"], actor, reason, now(), item.get("valid_from"), item.get("valid_until"),
-                    item.get("scope"), supersedes, reason, jid, json.dumps(item["temporal_validation"])))
+                    item.get("scope"), supersedes, reason, jid, json.dumps(item["temporal_validation"]),
+                    json.dumps(item.get('interaction_context', {}))))
 
     def complete(self, jid, result, metadata):
         with self.store.transaction() as db:

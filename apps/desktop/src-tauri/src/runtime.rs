@@ -9,7 +9,7 @@ use std::{
     path::PathBuf,
     process::{Child, Command, Stdio},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     thread,
@@ -18,6 +18,8 @@ use std::{
 use tauri::{AppHandle, Emitter};
 use tungstenite::{client::IntoClientRequest, Message};
 use uuid::Uuid;
+#[path = "execution_driver.rs"]
+mod execution_driver;
 
 #[derive(Clone)]
 pub struct Connection {
@@ -41,19 +43,28 @@ pub struct Runtime {
     child: Mutex<Option<Child>>,
     job: ProcessJob,
     stopping: AtomicBool,
+    pub frontend_count: AtomicUsize,
+    pub frontend_revision: AtomicUsize,
+    pub identity_views: Mutex<std::collections::BTreeMap<String, Value>>,
+    pub second_instances: AtomicUsize,
     provider: Mutex<crate::provider::ProviderVault>,
     search: Mutex<crate::network::Vault>,
-    tools: Mutex<crate::tools::Authority>,
+    tools: Arc<Mutex<crate::tools::Authority>>,
     plan_workers: Mutex<std::collections::HashSet<String>>,
 }
+
 impl Runtime {
+    pub fn inspect_document_resource(&self,resource:&Value)->Result<Value,String> {
+        let _tools=self.tools.lock().unwrap();
+        crate::document_host::inspect_selection(&self.data,resource)
+    }
     pub fn new(root: PathBuf, data: PathBuf) -> Result<Arc<Self>, String> {
         fs::create_dir_all(&data).map_err(|e| e.to_string())?;
         let provider = crate::provider::ProviderVault::load(&root, &data);
         let tools = crate::tools::Authority::load(&data)?;
         let search = crate::network::Vault::load(&root, &data)?;
         Ok(Arc::new(Self {
-            speech: crate::speech::Speech::new(&root, &data),
+            speech: crate::speech::Speech::new(&root,&data),
             plan_workers: Mutex::new(std::collections::HashSet::new()),
             root,
             data,
@@ -67,9 +78,13 @@ impl Runtime {
             child: Mutex::new(None),
             job: ProcessJob::new().map_err(|e| e.to_string())?,
             stopping: AtomicBool::new(false),
+            frontend_count: AtomicUsize::new(0),
+            frontend_revision: AtomicUsize::new(0),
+            identity_views: Mutex::new(std::collections::BTreeMap::new()),
+            second_instances: AtomicUsize::new(0),
             provider: Mutex::new(provider),
             search: Mutex::new(search),
-            tools: Mutex::new(tools),
+            tools: Arc::new(Mutex::new(tools)),
         }))
     }
     fn publish(&self, app: &AppHandle, status: &str, error: Option<String>) {
@@ -170,6 +185,7 @@ impl Runtime {
         }
     }
     fn cleanup_child(&self) {
+        crate::command_tools::cancel_all();
         {
             let mut status = self.status.lock().unwrap();
             status.status = "Offline".into();
@@ -217,31 +233,21 @@ impl Runtime {
     }
 
     pub fn command(&self, value: &Value) -> Result<Value, String> {
-        if matches!(
-            value["type"].as_str(),
-            Some(
-                "SendMessage"
-                    | "SelectAgent"
-                    | "SelectConversation"
-                    | "DeleteConversation"
-                    | "ConfigureProvider"
-                    | "EditPersona"
-                    | "EditGoal"
-                    | "ChangeGoalState"
-                    | "DeleteGoal"
-                    | "EditMemory"
-                    | "ForgetMemory"
-                    | "DeleteMemory"
-            )
-        ) {
-            self.speech.cancel(None);
+        if !value["payload"]["execution_ref"].is_null(){return Err("Execution dispatch is owned by Native Host".into());}
+        if matches!(value["type"].as_str(),Some("PauseTask"|"CancelTask"|"RevokeTaskPermission")) {
+            crate::command_tools::cancel(value["payload"]["task_id"].as_str().unwrap_or(""));
         }
+        if matches!(value["type"].as_str(),Some("SendMessage"|"SelectAgent"|"SelectConversation"|"DeleteConversation"|"ConfigureProvider"|"EditPersona"|"EditGoal"|"ChangeGoalState"|"DeleteGoal"|"EditMemory"|"RememberInteraction"|"ForgetMemory"|"DeleteMemory")) { self.speech.cancel(None); }
+        self.stop_execution_authority(value)?;
         let c = self
             .connection
             .lock()
             .unwrap()
             .clone()
             .ok_or("Core unavailable")?;
+        if value["type"].as_str().map(|k| k.ends_with("GoalExecution") || k=="EditGoalExecutionPlan").unwrap_or(false) {
+            return self.execution_command(&c,value);
+        }
         if value["type"] == "ConfigureProvider" {
             let mut vault = self.provider.lock().unwrap();
             let command_id = value["command_id"].as_str().ok_or("command_id required")?;
@@ -273,79 +279,63 @@ impl Runtime {
         if value["type"] == "ConfigureSearch" {
             let public = self.search.lock().unwrap().configure(value)?;
             // Configuration revision changes revoke old task grants, including pending model work.
-            let snapshot = request(
-                &c,
-                &json!({"protocol_version":1,"command_id":Uuid::new_v4().to_string(),"type":"GetSnapshot","payload":{}}),
-            )?;
-            for agent in snapshot["data"]["agents"]
-                .as_array()
-                .ok_or("Agent list unavailable")?
-            {
+            let snapshot = request(&c,&json!({"protocol_version":1,"command_id":Uuid::new_v4().to_string(),"type":"GetSnapshot","payload":{}}))?;
+            for agent in snapshot["data"]["agents"].as_array().ok_or("Agent list unavailable")? {
                 let aid = agent["agent_id"].as_str().ok_or("Agent required")?;
-                let tasks = request(
-                    &c,
-                    &json!({"protocol_version":1,"command_id":Uuid::new_v4().to_string(),"type":"ListTasks","agent_id":aid,"payload":{}}),
-                )?;
+                let tasks = request(&c,&json!({"protocol_version":1,"command_id":Uuid::new_v4().to_string(),"type":"ListTasks","agent_id":aid,"payload":{}}))?;
                 for task in tasks["data"].as_array().ok_or("Task list unavailable")? {
-                    if task["kind"] == "network"
-                        && task["permission"] == 1
-                        && task["runs"][0]["context"]["search_revision"] != public["revision"]
-                    {
+                    if task["kind"] == "network" && task["permission"] == 1 && task["runs"][0]["context"]["search_revision"] != public["revision"] {
                         let revoke = json!({"protocol_version":1,"command_id":Uuid::new_v4().to_string(),"type":"RevokeTaskPermission","agent_id":aid,
                             "expected_revision":task["revision"],"payload":{"task_id":task["task_id"]}});
-                        if self.task_command(&c, &revoke).is_err() {
-                            let current = self.get_task(&c, &revoke)?;
-                            let mut retry = revoke.clone();
-                            retry["command_id"] = json!(Uuid::new_v4().to_string());
-                            retry["expected_revision"] = current["revision"].clone();
-                            self.task_command(&c, &retry)?;
+                        if self.task_command(&c,&revoke).is_err() {
+                            let current = self.get_task(&c,&revoke)?;
+                            let mut retry = revoke.clone();retry["command_id"] = json!(Uuid::new_v4().to_string());retry["expected_revision"] = current["revision"].clone();
+                            self.task_command(&c,&retry)?;
                         }
                     }
                 }
             }
-            return Ok(
-                json!({"command_id":value["command_id"],"status":"persisted","data":public}),
-            );
+            return Ok(json!({"command_id":value["command_id"],"status":"persisted","data":public}));
         }
-        if value["type"] == "CreateMethodProposal"
-            || (value["type"] == "ConfigureProactivity" && value["payload"]["think"] == true)
-        {
+        if value["type"] == "SendMessage" && !value["payload"]["interaction_trial"].is_null() {
+            let grant = &value["payload"]["interaction_trial"];
             let provider = self.provider.lock().unwrap().config();
-            if provider["chat_allowed"] != true
-                || provider["api_key"].as_str().unwrap_or("").is_empty()
-                || value["payload"]["provider"] != crate::tools::binding(&provider)
-            {
-                return Err(
-                    "Explicit current Provider binding and purpose permission required".into(),
-                );
+            if provider["chat_allowed"] != true || grant["allow_outbound"] != true
+                || grant["provider"] != crate::tools::binding(&provider) {
+                return Err("Confirm candidate trial for the current Provider".into());
             }
-            if value["type"] == "CreateMethodProposal" && value["payload"]["allow_outbound"] != true
-            {
+        }
+        if matches!(value["type"].as_str(), Some("CreateMethodProposal" | "CreateConversationMethodProposal" | "RunInteractionComparison")) || (value["type"] == "ConfigureProactivity" && value["payload"]["think"] == true) {
+            let provider = self.provider.lock().unwrap().config();
+            if provider["chat_allowed"] != true || provider["api_key"].as_str().unwrap_or("").is_empty()
+                || value["payload"]["provider"] != crate::tools::binding(&provider) {
+                return Err("Explicit current Provider binding and purpose permission required".into());
+            }
+            if value["type"] != "ConfigureProactivity" && value["payload"]["allow_outbound"] != true {
                 return Err("Approve learning outbound first".into());
             }
         }
-        if matches!(
-            value["type"].as_str(),
-            Some("CreateNetworkTask" | "SelectNetworkSources" | "ApproveNetworkRedirect")
-        ) {
+        if matches!(value["type"].as_str(), Some("CreateNetworkTask" | "SelectNetworkSources" | "ApproveNetworkRedirect")) {
             return self.network_command(&c, value);
         }
         if value["type"] == "ApproveTaskPlan" {
             let task = self.get_task(&c, value)?;
-            if task["kind"] == "network" {
-                return self.network_command(&c, value);
-            }
+            if task["kind"] == "network" { return self.network_command(&c, value); }
         }
         if matches!(
             value["type"].as_str(),
             Some(
                 "CreateTask"
+                    | "CreateAgentTask"
+                    | "AnswerAgentTask"
+                    | "ReviseAgentAction"
                     | "CreatePlannedTask"
                     | "RetryTask"
                     | "ApproveTask"
                     | "RevokeTaskPermission"
                     | "ResolveTask"
                     | "PreviewTaskArtifact"
+                    | "OpenTaskArtifact"
             )
         ) {
             return self.task_command(&c, value);
@@ -359,12 +349,8 @@ impl Runtime {
         Ok(response)
     }
     fn get_task(&self, c: &Connection, value: &Value) -> Result<Value, String> {
-        Ok(request(
-            c,
-            &json!({"protocol_version":1,"command_id":Uuid::new_v4().to_string(),"type":"GetTask",
-            "agent_id":value["agent_id"],"payload":{"task_id":value["payload"]["task_id"]}}),
-        )?["data"]
-            .clone())
+        Ok(request(c, &json!({"protocol_version":1,"command_id":Uuid::new_v4().to_string(),"type":"GetTask",
+            "agent_id":value["agent_id"],"payload":{"task_id":value["payload"]["task_id"]}}))?["data"].clone())
     }
     fn network_command(&self, c: &Connection, value: &Value) -> Result<Value, String> {
         let provider = self.provider.lock().unwrap().config();
@@ -372,28 +358,14 @@ impl Runtime {
         let public = search.public();
         if value["type"] == "CreateNetworkTask" {
             search.check(&public["revision"])?;
-            let normalized = self
-                .tools
-                .lock()
-                .unwrap()
-                .create_network(value, &provider, &public)?;
+            let normalized = self.tools.lock().unwrap().create_network(value, &provider, &public)?;
             let response = request(c, &normalized)?;
-            if response["data"]["state"] != "Created" {
-                return Ok(response);
-            }
-            return native_task(
-                c,
-                "task-input",
-                &json!({"agent_id":value["agent_id"],"task_id":value["command_id"],
-                "provider":crate::tools::binding(&provider),"search_revision":public["revision"]}),
-            );
+            if response["data"]["state"] != "Created" { return Ok(response); }
+            return native_task(c, "task-input", &json!({"agent_id":value["agent_id"],"task_id":value["command_id"],
+                "provider":crate::tools::binding(&provider),"search_revision":public["revision"]}));
         }
         let task = self.get_task(c, value)?;
-        self.tools.lock().unwrap().outbound(
-            task["agent_id"].as_str().ok_or("Agent required")?,
-            task["task_id"].as_str().ok_or("Task required")?,
-            &provider,
-        )?;
+        self.tools.lock().unwrap().outbound(task["agent_id"].as_str().ok_or("Agent required")?,task["task_id"].as_str().ok_or("Task required")?, &provider)?;
         search.check(&task["runs"][0]["context"]["search_revision"])?;
         self.tools.lock().unwrap().review_network(&task, value)?;
         request(c, value)
@@ -401,7 +373,7 @@ impl Runtime {
     fn task_command(&self, c: &Connection, value: &Value) -> Result<Value, String> {
         let kind = value["type"].as_str().unwrap();
         let aid = value["agent_id"].as_str().ok_or("Agent required")?;
-        let tid = if kind == "CreateTask" || kind == "CreatePlannedTask" {
+        let tid = if kind == "CreateTask" || kind == "CreatePlannedTask" || kind == "CreateAgentTask" {
             value["command_id"].as_str()
         } else {
             value["payload"]["task_id"].as_str()
@@ -415,6 +387,20 @@ impl Runtime {
         };
         // Serializes native grants/writes/revocation, never holds a lock while the model runs.
         let mut tools = self.tools.lock().unwrap();
+        if kind=="CreateAgentTask" {
+            let provider=self.provider.lock().unwrap().config();
+            let search=self.search.lock().unwrap().clone();
+            if value["payload"]["allow_search"]==true {search.check(&search.public()["revision"])?;}
+            let normalized=tools.create_agent(value,&provider,&search.public())?;
+            let response=request(c,&normalized)?;
+            if response["data"]["state"]!="Created" {return Ok(response);}
+            return native_task(c,"task-input",&json!({"agent_id":aid,"task_id":tid,"provider":crate::tools::binding(&provider),"search_revision":search.public()["revision"]}));
+        }
+        if matches!(kind,"AnswerAgentTask"|"ReviseAgentAction") {
+            let provider=self.provider.lock().unwrap().config();
+            tools.outbound(aid,tid,&provider)?;
+            return request(c,value);
+        }
         if kind == "CreateTask" || kind == "CreatePlannedTask" || kind == "RetryTask" {
             let provider = self.provider.lock().unwrap().config();
             if kind == "CreateTask" || kind == "CreatePlannedTask" {
@@ -424,10 +410,7 @@ impl Runtime {
                 let task = get()?["data"].clone();
                 tools.outbound(aid, tid, &provider)?;
                 if task["kind"] == "network" {
-                    self.search
-                        .lock()
-                        .unwrap()
-                        .check(&task["runs"][0]["context"]["search_revision"])?;
+                    self.search.lock().unwrap().check(&task["runs"][0]["context"]["search_revision"])?;
                 }
                 request(c, value)?;
             }
@@ -436,13 +419,10 @@ impl Runtime {
                 return Ok(response);
             }
             if response["data"]["kind"] == "network" {
-                return native_task(
-                    c,
-                    "task-input",
-                    &json!({"agent_id":aid,"task_id":tid,"provider":crate::tools::binding(&provider),
-                    "search_revision":self.search.lock().unwrap().public()["revision"]}),
-                );
+                return native_task(c, "task-input", &json!({"agent_id":aid,"task_id":tid,"provider":crate::tools::binding(&provider),
+                    "search_revision":self.search.lock().unwrap().public()["revision"]}));
             }
+            if response["data"]["kind"]=="agent" {return native_task(c,"task-input",&json!({"agent_id":aid,"task_id":tid,"provider":crate::tools::binding(&provider),"search_revision":self.search.lock().unwrap().public()["revision"]}));}
             let input = match tools.files(aid, tid, &provider) {
                 Ok(files) => {
                     json!({"agent_id":aid,"task_id":tid,"files":files,"provider":crate::tools::binding(&provider)})
@@ -465,14 +445,21 @@ impl Runtime {
             return Ok(response);
         }
         let task = get()?["data"].clone();
+        if matches!(kind,"OpenTaskArtifact"|"PreviewTaskArtifact") && value["payload"]["output_id"].as_str().unwrap_or("").starts_with("tool") {
+            return Ok(json!({"status":"persisted","data":tools.preview_general(&task,value["payload"]["output_id"].as_str().unwrap(),kind=="OpenTaskArtifact")?}));
+        }
+        if kind=="OpenTaskArtifact" {
+            let id=value["payload"]["output_id"].as_str().ok_or("DocumentReferenceRequired")?;
+            return Ok(json!({"status":"persisted","data":tools.open_saved_document(&task,id)?}));
+        }
         if kind == "ApproveTask" && task["kind"] == "network" {
-            self.search
-                .lock()
-                .unwrap()
-                .check(&task["runs"][0]["context"]["search_revision"])?;
+            self.search.lock().unwrap().check(&task["runs"][0]["context"]["search_revision"])?;
         }
         if kind == "PreviewTaskArtifact" {
-            let view = if task["kind"] == "plan" || task["kind"] == "network" {
+            if let Some(id)=value["payload"]["output_id"].as_str().filter(|s|s.starts_with("document")) {
+                return Ok(json!({"status":"persisted","data":tools.preview_document(&task,id)?}));
+            }
+            let view = if task["kind"] == "plan" || task["kind"] == "network" || task["kind"] == "agent" {
                 crate::planned_host::artifact_view(&task, &value["payload"]["output_id"])?
             } else {
                 task.clone()
@@ -491,7 +478,15 @@ impl Runtime {
             if task["state"] != "NeedsAttention" && task["state"] != "Executing" {
                 return Err("No uncertain write to reconcile".into());
             }
-            let view = if task["kind"] == "plan" || task["kind"] == "network" {
+            if crate::general_host::WRITES.contains(&task["current_step"]["definition"]["op"].as_str().unwrap_or("")) {
+                let receipt=tools.resolve_general(&task)?;
+                return native_task(c,"task-receipt",&json!({"agent_id":aid,"task_id":tid,"action_id":task["current_step"]["action_id"],"receipt":receipt}));
+            }
+            if matches!(task["current_step"]["definition"]["op"].as_str(),Some("office_propose"|"text_propose")) {
+                let receipt=tools.resolve_document(&task)?;
+                return native_task(c,"task-receipt",&json!({"agent_id":aid,"task_id":tid,"action_id":task["current_step"]["action"]["action_id"],"receipt":receipt}));
+            }
+            let view = if task["kind"] == "plan" || task["kind"] == "network" || task["kind"] == "agent" {
                 crate::planned_host::action_view(&task)?
             } else {
                 task.clone()
@@ -504,7 +499,29 @@ impl Runtime {
             );
         }
         let approved = request(c, value)?["data"].clone();
-        let approved = if approved["kind"] == "plan" || approved["kind"] == "network" {
+        if crate::general_host::WRITES.contains(&approved["current_step"]["definition"]["op"].as_str().unwrap_or("")) {
+            let action=approved["current_step"]["action_id"].clone();
+            let stage=match tools.begin_general(&approved,&self.root) {Ok(v)=>v,Err(error)=>return native_task(c,"task-receipt",&json!({"agent_id":aid,"task_id":tid,"action_id":action,"receipt":{"outcome":"NotExecuted","error":error}}))};
+            drop(tools);
+            if stage["definition"]["op"]=="run_command" {
+                let authority=self.tools.clone();let connection=c.clone();let agent=aid.to_owned();let task_id=tid.to_owned();
+                thread::spawn(move||{
+                    let receipt=crate::general_host::perform(&stage);
+                    if authority.lock().unwrap().finish_general(&stage,&receipt).is_ok() {
+                        let _=native_task(&connection,"task-receipt",&json!({"agent_id":agent,"task_id":task_id,"action_id":action,"receipt":receipt}));
+                    }
+                });
+                return Ok(json!({"status":"persisted","data":approved}));
+            }
+            let receipt=crate::general_host::perform(&stage);
+            self.tools.lock().unwrap().finish_general(&stage,&receipt)?;
+            return native_task(c,"task-receipt",&json!({"agent_id":aid,"task_id":tid,"action_id":action,"receipt":receipt}));
+        }
+        if matches!(approved["current_step"]["definition"]["op"].as_str(),Some("office_propose"|"text_propose")) {
+            let receipt=tools.execute_document(&approved).unwrap_or(json!({"outcome":"Unknown","error":"NativeDocumentWriteUnconfirmed"}));
+            return native_task(c,"task-receipt",&json!({"agent_id":aid,"task_id":tid,"action_id":approved["current_step"]["action"]["action_id"],"receipt":receipt}));
+        }
+        let approved = if approved["kind"] == "plan" || approved["kind"] == "network" || approved["kind"] == "agent" {
             crate::planned_host::action_view(&approved)?
         } else {
             approved
@@ -524,6 +541,7 @@ impl Runtime {
         }
         let runtime = self.clone();
         thread::spawn(move || {
+            let mut recheck_waiting_transition=false;
             loop {
                 if runtime.stopping.load(Ordering::SeqCst)
                     || runtime
@@ -543,7 +561,7 @@ impl Runtime {
                     Ok(v) => v["data"].clone(),
                     Err(_) => break,
                 };
-                if task["kind"] != "plan" && task["kind"] != "network" {
+                if task["kind"] != "plan" && task["kind"] != "network" && task["kind"] != "agent" {
                     break;
                 }
                 if task["state"] == "Generating" {
@@ -551,28 +569,42 @@ impl Runtime {
                     continue;
                 }
                 if task["state"] != "Running" {
+                    recheck_waiting_transition=true;
                     break;
                 }
                 let provider = runtime.provider.lock().unwrap().config();
-                let op = task["current_step"]["definition"]["op"]
-                    .as_str()
-                    .unwrap_or("");
-                if task["kind"] == "network" && matches!(op, "search" | "read_web") {
-                    if runtime.network_step(&c, &task, &provider).is_err() {
-                        break;
-                    }
+                let op = task["current_step"]["definition"]["op"].as_str().unwrap_or("");
+                if (task["kind"] == "network" || task["kind"] == "agent") && matches!(op, "search" | "read_web") {
+                    if runtime.network_step(&c, &task, &provider).is_err() { break; }
                     continue;
                 }
-                if op != "read" {
-                    break;
+                if task["kind"]=="agent" && crate::general_host::is_tool(op) {
+                    let start=Instant::now();
+                    let result=runtime.tools.lock().unwrap().general_step(&task,&provider,&runtime.root);
+                    let auto=result.as_ref().map(|v|v["auto_execute"]==true).unwrap_or(false);
+                    let input=match result {Ok(mut tool)=>{tool["elapsed_ms"]=json!(start.elapsed().as_millis() as u64);json!({"agent_id":aid,"task_id":tid,"step_id":task["current_step"]["step_id"],"provider":crate::tools::binding(&provider),"tool":tool})},Err(error)=>json!({"agent_id":aid,"task_id":tid,"step_id":task["current_step"]["step_id"],"error":error})};
+                    match native_task(&c,"task-input",&input){Ok(observed)=>{
+                        if auto && observed["data"]["state"]=="AwaitingApproval" {
+                            let approval=json!({"protocol_version":1,"command_id":Uuid::new_v4().to_string(),"type":"ApproveTask","agent_id":aid,"expected_revision":observed["data"]["revision"],"payload":{"task_id":tid}});
+                            if runtime.task_command(&c,&approval).is_err(){break;}
+                        }
+                    },Err(_)=>break}
+                    continue;
                 }
+                if task["kind"]=="agent"&&matches!(op,"office_inspect"|"office_read"|"office_calculate"|"office_propose"|"text_propose") {
+                    let result=runtime.tools.lock().unwrap().document_step(&task,&provider);
+                    let input=match result {Ok(document)=>json!({"agent_id":aid,"task_id":tid,"step_id":task["current_step"]["step_id"],"provider":crate::tools::binding(&provider),"document":document}),Err(error)=>json!({"agent_id":aid,"task_id":tid,"step_id":task["current_step"]["step_id"],"error":error})};
+                    if native_task(&c,"task-input",&input).is_err(){break;}
+                    continue;
+                }
+                if op != "read" { break; }
                 let file = runtime.tools.lock().unwrap().read_step(&task, &provider);
                 let input = match file {
                     Ok(file) => {
                         json!({"agent_id":aid,"task_id":tid,"step_id":task["current_step"]["step_id"],"provider":crate::tools::binding(&provider),"file":file})
                     }
                     Err(error) => {
-                        json!({"agent_id":aid,"task_id":tid,"error":if error=="ArtifactChanged" {"ArtifactChanged"} else {"FileReadOrPermissionFailed"}})
+                        json!({"agent_id":aid,"task_id":tid,"step_id":task["current_step"]["step_id"],"error":if error=="ArtifactChanged" {"ArtifactChanged"} else {"FileReadOrPermissionFailed"}})
                     }
                 };
                 if native_task(&c, "task-input", &input).is_err() {
@@ -580,97 +612,54 @@ impl Runtime {
                 }
             }
             runtime.plan_workers.lock().unwrap().remove(&tid);
+            // A user answer/approval can arrive just as the worker observes a waiting state.
+            // Recheck after releasing its slot so that event cannot leave new work unattended.
+            if recheck_waiting_transition&&!runtime.stopping.load(Ordering::SeqCst) {
+                if let Ok(latest)=request(&c,&json!({"protocol_version":1,"command_id":Uuid::new_v4().to_string(),"type":"GetTask","agent_id":aid,"payload":{"task_id":tid}})) {
+                    if latest["data"]["state"]=="Running" && latest["data"]["kind"]=="agent" {
+                        runtime.start_plan_worker(c,aid,tid);
+                    }
+                }
+            }
         });
     }
 
     fn network_step(&self, c: &Connection, task: &Value, provider: &Value) -> Result<(), String> {
-        let aid = &task["agent_id"];
-        let tid = &task["task_id"];
+        let aid = &task["agent_id"]; let tid = &task["task_id"];
         let id = Uuid::new_v4().to_string();
         let search = self.search.lock().unwrap().clone();
-        let authorized = search
-            .check(&task["runs"][0]["context"]["search_revision"])
-            .and_then(|_| {
-                self.tools
-                    .lock()
-                    .unwrap()
-                    .begin_network(task, provider, &search.public(), &id)
-            });
+        let direct=task["kind"]=="agent" && task["agent_limits"]["tools"]["urls"].as_array().map(|v|v.contains(&task["current_step"]["definition"]["url"])).unwrap_or(false) && task["current_step"]["definition"]["op"]=="read_web";
+        let authorized = (if direct {Ok(())} else {search.check(&task["runs"][0]["context"]["search_revision"])})
+            .and_then(|_| self.tools.lock().unwrap().begin_network(task, provider, &search.public(), &id));
         let hosts = match authorized {
             Ok(hosts) => hosts,
             Err(error) => {
-                let code = if error == "SearchRequestLimit" {
-                    "SearchRequestLimit"
-                } else {
-                    "NetworkPermissionChanged"
-                };
-                native_task(
-                    c,
-                    "task-input",
-                    &json!({"agent_id":aid,"task_id":tid,"error":code}),
-                )?;
-                return Err(code.into());
+                let code = if error == "SearchRequestLimit" { "SearchRequestLimit" } else { "NetworkPermissionChanged" };
+                native_task(c,"task-input",&json!({"agent_id":aid,"task_id":tid,"error":code}))?; return if task["kind"]=="agent" {Ok(())} else {Err(code.into())};
             }
         };
         let step = &task["current_step"];
-        native_task(
-            c,
-            "task-input",
-            &json!({"agent_id":aid,"task_id":tid,"phase":"start","request_id":id,"step_id":step["step_id"]}),
-        )?;
+        native_task(c,"task-input",&json!({"agent_id":aid,"task_id":tid,"phase":"start","request_id":id,"step_id":step["step_id"]}))?;
         // Release authority/configuration locks before HTTP so user revocation remains responsive.
         let start = Instant::now();
         let result = if step["definition"]["op"] == "search" {
-            search.search(
-                step["definition"]["query"]
-                    .as_str()
-                    .ok_or("Query required")?,
-                &task["runs"][0]["context"]["search_revision"],
-            )
-        } else {
-            crate::network::fetch(
-                step["definition"]["url"].as_str().ok_or("URL required")?,
-                &hosts,
-            )
-        };
+            search.search(step["definition"]["query"].as_str().ok_or("Query required")?, &task["runs"][0]["context"]["search_revision"])
+        } else { crate::network::fetch(step["definition"]["url"].as_str().ok_or("URL required")?, &hosts) };
         let mut input = json!({"agent_id":aid,"task_id":tid,"phase":"result","request_id":id,
             "metadata":{"elapsed_ms":start.elapsed().as_millis() as u64,"attempt_started":true}});
         match result {
-            Ok(result) => {
-                input["metadata"]["usage"] = result["usage"].clone();
-                input["metadata"]["service_request_id"] = result["request_id"].clone();
-                input["metadata"]["http_requests_started"] =
-                    result["http_requests_started"].clone();
-                input["result"] = result;
-            }
+            Ok(result) => { input["metadata"]["usage"] = result["usage"].clone(); input["metadata"]["service_request_id"] = result["request_id"].clone();
+                input["metadata"]["http_requests_started"] = result["http_requests_started"].clone(); input["result"] = result; }
             Err(error) => input["error"] = json!(error),
         }
+
         // A purpose/config change while HTTP was in flight retains counts but discards bodies.
-        if self
-            .search
-            .lock()
-            .unwrap()
-            .check(&task["runs"][0]["context"]["search_revision"])
-            .is_err()
-            || self
-                .tools
-                .lock()
-                .unwrap()
-                .outbound(
-                    aid.as_str().unwrap(),
-                    tid.as_str().unwrap(),
-                    &self.provider.lock().unwrap().config(),
-                )
-                .is_err()
-        {
-            input["result"] = json!({});
-            input["error"] = json!("NetworkPermissionChanged");
+        if (!direct && self.search.lock().unwrap().check(&task["runs"][0]["context"]["search_revision"]).is_err())
+            || self.tools.lock().unwrap().outbound(aid.as_str().unwrap(),tid.as_str().unwrap(),&self.provider.lock().unwrap().config()).is_err() {
+            input["result"] = json!({}); input["error"] = json!("NetworkPermissionChanged");
         }
-        self.tools
-            .lock()
-            .unwrap()
-            .finish_network(&id, &input["metadata"])?;
-        native_task(c, "task-input", &input)?;
+        if task["kind"]=="agent" {self.tools.lock().unwrap().finish_agent_network(&id,&input["metadata"],&input["result"])?;} else {self.tools.lock().unwrap().finish_network(&id, &input["metadata"])?;}
+        native_task(c,"task-input",&input)?;
         Ok(())
     }
     pub fn start(self: &Arc<Self>, app: AppHandle) {
@@ -758,12 +747,17 @@ impl Runtime {
                     format!("Bearer {}", c.token).parse().unwrap(),
                 );
                 if let Ok((mut socket, _)) = tungstenite::connect(request) {
+                    let mut execution_checked=Instant::now()-Duration::from_secs(2);
                     if let tungstenite::stream::MaybeTlsStream::Plain(tcp) = socket.get_mut() {
                         let _ = tcp.set_read_timeout(Some(Duration::from_millis(500)));
                     }
                     loop {
                         if runtime.stopping.load(Ordering::SeqCst) {
                             break;
+                        }
+                        if execution_checked.elapsed()>=Duration::from_secs(1) {
+                            let _=runtime.execution_tick(&c);
+                            execution_checked=Instant::now();
                         }
                         if runtime
                             .connection

@@ -6,13 +6,16 @@ from .errors import DomainError
 from .identity import now
 from .memory_governance import cached, erase_cached
 
-VERSION = 'chat-work-v1'
-PROMPT = '''You may propose work, never execute it. Return one JSON object, reply first:
-{"reply":"natural answer in the user's language", "suggestion":null}
-For an explicit file task, suggestion may be {"kind":"file_task","title":"short title","instruction":"complete user requirements including relevant confirmed preferences"}.
-For a user wanting a new continuing objective, suggestion may be {"kind":"goal","title":"short title","objective":"objective","success_criteria":"user-reviewable criteria","next_step":"next step"}.
-For a change to the explicitly selected current Goal, suggestion may be {"kind":"goal_next_step","next_step":"proposed next step"}.
-Only ONE suggestion or null. Ordinary conversation and missing essential requirements use null; ask a useful clarification in reply. Do not invent missing details, resources, paths, dates or approvals. A file suggestion prepares a task for user resource selection; it cannot read files or promise execution. The native file workflow currently reads only selected UTF-8 .md/.txt text and creates new .md/.txt outputs. It cannot read/extract PDFs, images or Office files. For a clear request to summarize a PDF, explain that limitation and offer file_task to summarize text extracted by the user, preserving the requested deliverable and identifying that text selection is still required. Never imply the PDF itself was read or that unrelated notes or general knowledge are its complete contents. This is a local application with an authorized task workflow, not a simulated environment. When the requested deliverable and requirements are clear, offer file_task even if the user will select files later. Missing paths, output location and resource permission belong to the next user form, not chat clarification; do not ask users to paste paths into chat. New or updated material may justify new work after a completed Task; preserve the current feedback and distinguish this update from repeating the old work. Do not propose recreating work when current evidence shows it already exists: address waiting/Unknown work first. Goal creation and updates require user confirmation. No reminder, network or other tool suggestion is supported. Do not output any other keys or markdown fences. Never claim a suggestion was executed. User feedback is user assessment, not tool evidence or authorization.'''
+VERSION = 'chat-work-v2'
+PROMPT = '''You may propose work, never execute it. Return strict JSON, reply first:
+{"reply":"natural answer in the user's language","suggestion":null}
+For explicit legacy single-report file work: {"kind":"file_task","title":"short title","instruction":"complete requirements and relevant confirmed preferences"}.
+For explicit checking, public research or observation-dependent actions: {"kind":"agent_task","title":"short title","instruction":"complete current requirements"}. It opens a user-reviewed bounded scope, never grants tools or creates a Goal. Only collaboration methods fit agent_task.
+For a user requesting a continuing objective: {"kind":"goal","title":"short title","objective":"objective","success_criteria":"user-reviewable criteria","next_step":"next step"}.
+For changing the explicitly selected Goal: {"kind":"goal_next_step","next_step":"proposed next step"}.
+Only ONE suggestion or null. Ordinary companionship needs no task. If essential requirements are missing, use null and clarify naturally. Never invent details, resources, paths, dates, facts or approval. Do not claim execution.
+The legacy file_task reads selected UTF-8 .md/.txt and creates new .md/.txt. General directory/file inspection, UTF-8 text or CSV/JSON edits, local calculation/conversion commands, public URLs and Office adapters use agent_task after Host-reviewed resource and action scope. Only explicitly enabled tools are available; no direct PDF extraction or image interpretation. A clear PDF-summary request should explain this and offer file_task for user-extracted text, preserving the deliverable and required text selection. Never imply the PDF was read or unrelated notes are its contents. Missing paths, output locations and permissions belong to the resource form, not chat clarification; do not request pasted paths.
+When requirements are clear, offer appropriate work before resources are selected. Updated material may warrant new work; preserve existing feedback, handle waiting/Unknown work first, and do not recreate an existing deliverable. Current states, receipts, user-edited bodies and feedback are distinct evidence. User assessment grants no execution authority. Goal edits require confirmation. No reminder or direct tool-execution suggestion is supported. No extra keys or markdown fences.'''
 MIGRATION = (
     """CREATE TABLE work_responses(run_id TEXT PRIMARY KEY REFERENCES runs(run_id),agent_id TEXT NOT NULL,
         raw_output TEXT NOT NULL,suggestion TEXT,state TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 0,
@@ -79,13 +82,13 @@ def decode(raw):
             raise ValueError()
         suggestion = value['suggestion']
         if suggestion is not None:
-            fields = {'file_task': {'title': 120, 'instruction': 4000},
+            fields = {'file_task': {'title': 120, 'instruction': 4000}, 'agent_task': {'title':120,'instruction':4000},
                       'goal': {'title': 120, 'objective': 2000, 'success_criteria': 1000, 'next_step': 1000},
                       'goal_next_step': {'next_step': 1000}}
             if not isinstance(suggestion, dict) or suggestion.get('kind') not in fields:
                 raise ValueError()
             sizes = fields[suggestion['kind']]
-            optional = {'skill_id'} if suggestion['kind'] == 'file_task' else set()
+            optional = {'skill_id'} if suggestion['kind'] in ('file_task','agent_task') else set()
             if not {'kind', *sizes} <= set(suggestion) or set(suggestion) - {'kind', *sizes} - optional or any(not isinstance(suggestion[k], str)
                 or not suggestion[k].strip() or len(suggestion[k]) > limit
                 or any(0xD800 <= ord(ch) <= 0xDFFF for ch in suggestion[k]) for k, limit in sizes.items()):
@@ -110,7 +113,7 @@ class WorkRepository:
     def capture(self, db, run, raw, completed):
         suggestion = decode(raw)[1] if completed else None
         if suggestion and suggestion.get('skill_id'):
-            ref = run['context'].get('method_context')
+            ref = next((r for r in run['context'].get('available_work_methods', []) if r['proposal_id'] == suggestion['skill_id']), run['context'].get('method_context'))
             if not ref or ref['proposal_id'] != suggestion['skill_id']:
                 raise DomainError('InvalidWorkSuggestion', 'Method suggestion did not match the authorized current method')
             self.store.evolution.resolve(db, run['agent_id'], ref)
@@ -134,8 +137,7 @@ class WorkRepository:
         if refs.get('work_context'):
             from .conversation_work import approved
             approved(self.store, db, aid, run['conversation_id'], refs['work_context'])
-        if refs.get('method_context'):
-            self.store.evolution.resolve(db, aid, refs['method_context'])
+        self.store.evolution.check_context(db, aid, refs)
         return run
 
     def response(self, db, aid, rid):
@@ -149,7 +151,7 @@ class WorkRepository:
         data['source_conversation_id'] = run['conversation_id']
         approval = run['context'].get('goal_context')
         data['context_goal_id'] = approval.get('goal_id') if approval else None
-        data['method_ref'] = run['context'].get('method_context') if data['suggestion'] and data['suggestion'].get('skill_id') else None
+        data['method_ref'] = next((r for r in run['context'].get('available_work_methods', []) if r['proposal_id'] == data['suggestion'].get('skill_id')), run['context'].get('method_context')) if data['suggestion'] and data['suggestion'].get('skill_id') else None
         data['origin'] = 'user' if db.execute("SELECT 1 FROM events WHERE type='PrepareFileWork' AND agent_id=? AND json_extract(payload,'$.run_id')=?", (aid, rid)).fetchone() else 'model'
         data['can_prepare_file'], data['available_method'] = False, None
         if data['state'] == 'None':
@@ -185,10 +187,11 @@ class WorkRepository:
         if not row or row['state'] != 'Pending' or row['revision'] != ref['revision']:
             raise DomainError('RevisionConflict', 'Suggestion already handled or changed')
         suggestion = json.loads(row['suggestion'])
-        expected = {'CreateTask': 'file_task', 'CreatePlannedTask': 'file_task', 'CreateGoal': 'goal', 'EditGoal': 'goal_next_step'}[kind]
+        expected = {'CreateTask': 'file_task', 'CreatePlannedTask': 'file_task', 'CreateAgentTask': 'agent_task', 'CreateGoal': 'goal', 'EditGoal': 'goal_next_step'}[kind]
         if suggestion['kind'] != expected:
             raise DomainError('Forbidden', 'Suggestion does not support this operation')
-        if suggestion.get('skill_id') and c['payload'].get('method_ref') != run['context'].get('method_context'):
+        expected_method = next((r for r in run['context'].get('available_work_methods', []) if r['proposal_id'] == suggestion.get('skill_id')), run['context'].get('method_context'))
+        if suggestion.get('skill_id') and c['payload'].get('method_ref') != expected_method:
             raise DomainError('ContextStale', 'Keep the reviewed method version or discuss a new suggestion')
         approval = run['context'].get('goal_context')
         if kind == 'EditGoal' and (not approval or approval['goal_id'] != target_id):
@@ -197,7 +200,7 @@ class WorkRepository:
             or c['payload'].get('source_conversation_id') != run['conversation_id']):
             raise DomainError('Forbidden', 'Keep the reviewed suggestion source')
         db.execute('UPDATE work_responses SET state=\'Accepted\',revision=revision+1,task_id=?,goal_id=? WHERE run_id=?',
-                   (target_id if kind in ('CreateTask', 'CreatePlannedTask') else None, target_id if kind not in ('CreateTask', 'CreatePlannedTask') else None, rid))
+                   (target_id if kind in ('CreateTask', 'CreatePlannedTask','CreateAgentTask') else None, target_id if kind not in ('CreateTask', 'CreatePlannedTask','CreateAgentTask') else None, rid))
 
     def feedback(self, db, aid, rid):
         row = db.execute('SELECT * FROM task_feedback WHERE agent_id=? AND run_id=?', (aid, rid)).fetchone()

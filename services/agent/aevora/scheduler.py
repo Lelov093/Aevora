@@ -170,6 +170,7 @@ class SchedulerRuntime:
         while True:
             try:
                 self.repo.tick(self.reason)
+                self.repo.store.executions.tick()
                 if self.proactive:
                     self.proactive.tick()
                 self.error = None

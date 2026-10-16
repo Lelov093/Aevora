@@ -7,7 +7,7 @@ import type {Goal,GoalSummary} from './goals';
 
 export type CommitmentOrigin={commitment_id:string;source_message_id:string;source_conversation_id:string;source_available:boolean};
 export type BodyReview={editor:'user'|'model';state:string;save_approved:boolean};
-export type TaskResultValue={task_id:string;state:string;revision:number;permission:number;run_id:string;error:string|null;outputs:{output_id:string;label:string;path:string;outcome:string|null;bytes_written:number|null;body_review?:BodyReview|null}[]};
+export type TaskResultValue={reply?:string|null;task_id:string;state:string;revision:number;permission:number;run_id:string;error:string|null;outputs:{output_id:string;label:string;path:string;outcome:string|null;bytes_written:number|null;body_review?:BodyReview|null}[]};
 export type Schedule={schedule_id:string;agent_id:string;title:string;instruction:string;task_kind:'file'|'network';due_at:string;time_zone:string;state:'Scheduled'|'Ready'|'Started'|'Cancelled'|'Dismissed';revision:number;triggered_at?:string;delivery_reason?:string;task_id?:string;commitment?:CommitmentOrigin|null;task_result?:TaskResultValue|null;goal?:GoalSummary|null};
 export type ScheduleView={settings:{enabled:number;revision:number};items:Schedule[]};
 const envelope=()=>({protocol_version:1 as const,command_id:crypto.randomUUID()});

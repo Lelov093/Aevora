@@ -10,6 +10,7 @@ pub struct Vault {
     pub config: Value,
     pub usage: Vec<Value>,
     pub error: Option<String>,
+    pub testing_unlimited: bool,
     data: PathBuf,
 }
 fn defaults() -> Value {
@@ -68,6 +69,7 @@ impl Vault {
             config: defaults(),
             usage: vec![],
             error: None,
+            testing_unlimited: false,
             data: data.into(),
         };
         let p = data.join("speech.dpapi");
@@ -163,6 +165,7 @@ impl Vault {
     }
     pub fn public(&self) -> Value {
         let mut c = self.config.clone();
+        c["testing_unlimited"] = json!(self.testing_unlimited);
         for p in ["asr", "tts"] {
             c[p]["credential_present"] = json!(!c[p]["api_key"].as_str().unwrap_or("").is_empty());
             c[p].as_object_mut().unwrap().remove("api_key");
@@ -298,8 +301,9 @@ impl Vault {
                 }
             })
             .sum();
-        if prior.len() >= p["max_calls"].as_u64().unwrap_or(0) as usize
-            || reserved + units > p[limit].as_f64().unwrap_or(0.0)
+        if !self.testing_unlimited
+            && (prior.len() >= p["max_calls"].as_u64().unwrap_or(0) as usize
+                || reserved + units > p[limit].as_f64().unwrap_or(0.0))
         {
             return Err("语音预算已用尽；没有自动增加或重试。".into());
         }

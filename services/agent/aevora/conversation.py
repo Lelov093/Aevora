@@ -105,6 +105,11 @@ class ConversationRepository:
         from .followup import request_hint
         for m in messages:
             m['followup_request'] = request_hint(m['content']) if m['role'] == 'user' else None
+            if m['role'] == 'assistant':
+                m['interaction_feedback'] = self.store.interaction_learning.feedback(db, agent_id, m['run_id'])
+                refs = self.run(db, agent_id, m['run_id'])['context'].get('interaction_methods', [])
+                m['interaction_methods'] = refs
+                m['interaction_trial'] = self.run(db, agent_id, m['run_id'])['context'].get('interaction_trial')
             m['followup_applied'] = [json.loads(r[0]) for r in db.execute("SELECT payload FROM events WHERE agent_id=? AND type='SetGoalFollowupPolicy' AND json_extract(payload,'$.source_message_id')=? ORDER BY sequence DESC LIMIT 8", (agent_id,m['message_id']))] if m['role'] == 'user' else []
         work = [w for rid in dict.fromkeys(m['run_id'] for m in messages)
                 if (w := self.store.work.response(db, agent_id, rid))]
@@ -141,7 +146,7 @@ class ConversationRepository:
         jobs = [dict(row) for row in db.execute(
             "SELECT job_id,run_id,state,error FROM memory_jobs WHERE agent_id=? AND conversation_id=? ORDER BY rowid DESC LIMIT 20",
             (agent_id, cid))]
-        erasure = db.execute("SELECT COALESCE(MAX(sequence),0) FROM events WHERE agent_id=? AND type IN ('MemoryDeleted','MemoryForgotten','ConversationDeleted','DeleteGoal')", (agent_id,)).fetchone()[0]
+        erasure = db.execute("SELECT COALESCE(MAX(sequence),0) FROM events WHERE agent_id=? AND type IN ('MemoryDeleted','MemoryForgotten','ConversationDeleted','DeleteGoal','MethodContextErased','DeleteMethod')", (agent_id,)).fetchone()[0]
         work = messages.get('work', [])
         return {"conversations": conversations, "selected_conversation_id": cid, **messages, "runs": runs, "memory_jobs": jobs, "erasure_sequence": erasure, 'work': work, 'resume_goal_id': self.target(db, agent_id, cid)['resume_goal_id'] if cid else None}
 
@@ -213,9 +218,18 @@ class ConversationRepository:
             projection = self.store.goals.approved_context(db, aid, approval) if approval else None
             work_approval = command['payload'].get('work_context')
             work_projection = approved_work(self.store, db, aid, cid, work_approval) if work_approval else None
+            from .interaction_trial import approve as approve_trial, references as trial_references
+            grant = command['payload'].get('interaction_trial')
+            if retry and previous['context'].get('interaction_trial') and not grant:
+                raise DomainError('Forbidden', 'Confirm candidate trial again before retrying this reply')
+            trial = approve_trial(self.store, db, aid, grant, config) if grant else None
+            trial_refs = trial_references(self.store, db, aid, trial, config) if trial else None
             model_messages, refs = build_context(db, profile, cid, text, config, before_sequence,
                                                 input_timezone=self.store.input_timezone, goal_projection=projection,
-                                                work_suggestions=command['payload'].get('work_suggestions', False), work_projection=work_projection)
+                                                work_suggestions=command['payload'].get('work_suggestions', False), work_projection=work_projection,
+                                                interaction_refs=trial_refs)
+            if trial:
+                refs['interaction_trial'] = trial
             if command['payload'].get('work_suggestions'):
                 from .work import VERSION
                 refs['work_version'] = VERSION
@@ -259,6 +273,12 @@ class ConversationRepository:
                     return old["data"]
             run = self.run(db, agent_id, run_id)
             if run["state"] in ("Created", "Running"):
+                if state == 'Completed':
+                    try:
+                        self.store.evolution.check_context(db, agent_id, run['context'])
+                    except DomainError:
+                        run['context']['context_stale'] = True
+                        db.execute('UPDATE runs SET context=? WHERE run_id=?', (json.dumps(run['context']), run_id))
                 if state == 'Completed' and run['context'].get('work_context'):
                     try:
                         approved_work(self.store, db, agent_id, run['conversation_id'], run['context']['work_context'])

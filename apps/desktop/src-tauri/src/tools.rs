@@ -8,14 +8,14 @@ use std::{
 };
 
 pub struct Authority {
-    path: PathBuf,
-    value: Value,
+    pub(crate) path: PathBuf,
+    pub(crate) value: Value,
 }
 fn denied(message: &str) -> String {
     json!({"error":{"code":"Forbidden","message":message}}).to_string()
 }
 
-fn local(path: &Path) -> Result<(), String> {
+pub(crate) fn local(path: &Path) -> Result<(), String> {
     let text = path
         .to_str()
         .ok_or_else(|| denied("Path must be Unicode"))?;
@@ -80,10 +80,10 @@ pub fn destination(path: &str) -> Result<String, String> {
     }
     Ok(path.into())
 }
-fn read(path: &str, limit: usize) -> Result<String, String> {
+pub(crate) fn read(path: &str, limit: usize) -> Result<String, String> {
     read_exact(path, limit).map(|s| s.trim_start_matches('\u{feff}').to_string())
 }
-fn read_exact(path: &str, limit: usize) -> Result<String, String> {
+pub(crate) fn read_exact(path: &str, limit: usize) -> Result<String, String> {
     source(path)?;
     let file = fs::OpenOptions::new()
         .read(true)
@@ -126,7 +126,7 @@ impl Authority {
         }
         Ok(Self { path, value })
     }
-    fn save(&mut self, next: Value) -> Result<(), String> {
+    pub(crate) fn save(&mut self, next: Value) -> Result<(), String> {
         let tmp = self.path.with_extension("tmp");
         let mut file =
             fs::File::create(&tmp).map_err(|_| denied("Cannot save native action authority"))?;
@@ -258,6 +258,7 @@ impl Authority {
         self.save(next)
     }
     pub fn begin_network(&mut self, task: &Value, provider: &Value, search: &Value, id: &str) -> Result<Vec<String>, String> {
+        if task["kind"]=="agent" {return self.begin_agent_network(task,provider,search,id);}
         let aid = task["agent_id"].as_str().ok_or("Agent required")?;
         let tid = task["task_id"].as_str().ok_or("Task required")?;
         self.outbound(aid, tid, provider)?;
@@ -284,13 +285,16 @@ impl Authority {
         Ok(hosts)
     }
     pub fn finish_network(&mut self, id: &str, metadata: &Value) -> Result<(), String> {
+        let tid=self.value["actions"][id]["task_id"].as_str().unwrap_or("");
+        let grant=self.value["grants"][tid].clone();
+        self.finish_execution_charge(&grant,id)?;
         let mut next = self.value.clone();
         if next["actions"].get(id).is_none() { return Err(denied("Unknown network request")); }
         next["actions"][id]["state"] = json!("Finished");
         next["actions"][id]["metadata"] = metadata.clone();
         self.save(next)
     }
-    fn grant(&self, aid: &str, tid: &str) -> Result<&Value, String> {
+    pub(crate) fn grant(&self, aid: &str, tid: &str) -> Result<&Value, String> {
         let grant = self.value["grants"]
             .get(tid)
             .ok_or_else(|| denied("Native file permission unavailable"))?;
@@ -301,6 +305,7 @@ impl Authority {
     }
     pub fn outbound(&self, aid: &str, tid: &str, provider: &Value) -> Result<(), String> {
         let grant = self.grant(aid, tid)?;
+        self.check_parent(grant)?;
         if grant["enabled"] != true
             || grant["provider"] != binding(provider)
             || provider["chat_allowed"] != true
@@ -330,6 +335,7 @@ impl Authority {
         self.save(next)
     }
     pub fn read_step(&self, task: &Value, provider: &Value) -> Result<Value, String> {
+        if task["kind"]=="agent" {return self.read_agent_step(task,provider);}
         let aid = task["agent_id"]
             .as_str()
             .ok_or_else(|| denied("Agent required"))?;
@@ -514,8 +520,11 @@ pub fn binding(config: &Value) -> Value {
 pub fn choose(kind: &str) -> Result<Value, String> {
     use std::{os::windows::process::CommandExt, process::Command};
     let script = match kind {
+        "directory" => "Add-Type -AssemblyName System.Windows.Forms; $dlg=New-Object System.Windows.Forms.FolderBrowserDialog; if($dlg.ShowDialog() -eq 'OK'){ConvertTo-Json -Compress -InputObject @($dlg.SelectedPath)}else{'[]'}",
         "sources" => "Add-Type -AssemblyName System.Windows.Forms; $dlg=New-Object System.Windows.Forms.OpenFileDialog; $dlg.Filter='UTF-8 Text (*.md;*.txt)|*.md;*.txt'; $dlg.Multiselect=$true; if($dlg.ShowDialog() -eq 'OK'){ConvertTo-Json -Compress -InputObject @($dlg.FileNames)}else{'[]'}",
         "output" => "Add-Type -AssemblyName System.Windows.Forms; $dlg=New-Object System.Windows.Forms.SaveFileDialog; $dlg.Filter='Markdown (*.md)|*.md|Text (*.txt)|*.txt'; $dlg.FileName='report.md'; if($dlg.ShowDialog() -eq 'OK'){ConvertTo-Json -Compress -InputObject @($dlg.FileName)}else{'[]'}",
+        "documents" => "Add-Type -AssemblyName System.Windows.Forms; $dlg=New-Object System.Windows.Forms.OpenFileDialog; $dlg.Filter='Documents (*.docx;*.xlsx;*.md;*.txt)|*.docx;*.xlsx;*.md;*.txt'; if($dlg.ShowDialog() -eq 'OK'){ConvertTo-Json -Compress -InputObject @($dlg.FileName)}else{'[]'}",
+        "document-output" => "Add-Type -AssemblyName System.Windows.Forms; $dlg=New-Object System.Windows.Forms.SaveFileDialog; $dlg.Filter='Word (*.docx)|*.docx|Excel (*.xlsx)|*.xlsx'; $dlg.FileName='document.docx'; if($dlg.ShowDialog() -eq 'OK'){ConvertTo-Json -Compress -InputObject @($dlg.FileName)}else{'[]'}",
         _ => return Err(denied("Unsupported file picker")),
     };
     let output = Command::new("powershell.exe")

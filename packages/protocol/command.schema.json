@@ -116,7 +116,28 @@
         "SetConversationGoal",
         "GetConversationWorkContext",
         "SetGoalFollowupPolicy",
-        "GetConversationWorkResponses"
+        "GetConversationWorkResponses",
+        "GetInteractionExperience",
+        "SaveInteractionFeedback",
+        "DeleteInteractionFeedback",
+        "CreateConversationMethodProposal",
+        "RunInteractionComparison",
+        "ListInteractionComparisons",
+        "RecordInteractionMethodEvaluation",
+        "CreateAgentTask",
+        "AnswerAgentTask",
+        "ReviseAgentAction",
+        "GetInteractionMemory",
+        "RememberInteraction",
+        "OpenTaskArtifact",
+        "CreateGoalExecution",
+        "GetGoalExecution",
+        "EditGoalExecutionPlan",
+        "ApproveGoalExecution",
+        "PauseGoalExecution",
+        "ResumeGoalExecution",
+        "RevokeGoalExecution",
+        "RenewGoalExecution"
       ]
     },
     "payload": {
@@ -278,6 +299,55 @@
         },
         "work_context": {
           "$ref": "#/$defs/ConversationWorkApproval"
+        },
+        "interaction_trial": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "proposal_id",
+            "revision",
+            "provider",
+            "allow_outbound"
+          ],
+          "properties": {
+            "proposal_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "provider": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "base_url",
+                "model",
+                "revision"
+              ],
+              "properties": {
+                "base_url": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "allow_outbound": {
+              "const": true
+            }
+          }
         }
       },
       "required": [
@@ -967,7 +1037,7 @@
         },
         "output_id": {
           "type": "string",
-          "pattern": "^output[12]$"
+          "pattern": "^(output[1-2]|document[1-4]|tool(-log)?:[a-zA-Z0-9-]+:[0-7])$"
         }
       },
       "required": [
@@ -1807,7 +1877,12 @@
       "type": "object",
       "properties": {
         "family": {
-          "const": "preparation_update"
+          "type": "string",
+          "enum": [
+            "preparation_update",
+            "collaboration",
+            "communication"
+          ]
         },
         "title": {
           "type": "string",
@@ -1916,6 +1991,13 @@
         },
         "base_method_ref": {
           "$ref": "#/$defs/MethodRef"
+        },
+        "family": {
+          "type": "string",
+          "enum": [
+            "preparation_update",
+            "collaboration"
+          ]
         }
       },
       "required": [
@@ -2295,6 +2377,10 @@
               "revision": {
                 "type": "integer",
                 "minimum": 0
+              },
+              "run_id": {
+                "type": "string",
+                "format": "uuid"
               }
             },
             "required": [
@@ -2314,6 +2400,28 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 64
+        },
+        "executions": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "execution_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "execution_id",
+              "revision"
+            ]
+          }
         }
       },
       "required": [
@@ -2369,6 +2477,872 @@
         "conversation_id",
         "run_ids"
       ]
+    },
+    "InteractionTarget": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "additionalProperties": false
+    },
+    "InteractionFeedback": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "Strategy",
+            "Preference",
+            "FactCorrection",
+            "TemporaryState"
+          ]
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "run_id",
+        "category",
+        "note"
+      ],
+      "additionalProperties": false
+    },
+    "InteractionDelete": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "delete_methods": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "run_id",
+        "delete_methods"
+      ],
+      "additionalProperties": false
+    },
+    "InteractionCreate": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "feedback_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "minItems": 1,
+          "maxItems": 6
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderBinding"
+        },
+        "allow_outbound": {
+          "const": true
+        },
+        "base_method_ref": {
+          "$ref": "#/$defs/MethodRef"
+        }
+      },
+      "required": [
+        "run_id",
+        "feedback_revision",
+        "objective",
+        "criteria",
+        "provider",
+        "allow_outbound"
+      ],
+      "additionalProperties": false
+    },
+    "InteractionCompare": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderBinding"
+        },
+        "allow_outbound": {
+          "const": true
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "memory_contexts": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": [
+              "conversation_id",
+              "memories"
+            ],
+            "properties": {
+              "conversation_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "memories": {
+                "type": "array",
+                "maxItems": 5,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "memory_id",
+                    "revision_id"
+                  ],
+                  "properties": {
+                    "memory_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "revision_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "proposal_id",
+        "provider",
+        "allow_outbound",
+        "cases"
+      ],
+      "additionalProperties": false
+    },
+    "InteractionEvaluation": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "improved": {
+          "type": "boolean"
+        },
+        "no_regression": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          },
+          "minItems": 1,
+          "maxItems": 6
+        },
+        "reviewer": {
+          "enum": [
+            "user",
+            "development_review"
+          ],
+          "type": "string"
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "comparison_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "proposal_id",
+        "improved",
+        "no_regression",
+        "checks",
+        "reviewer",
+        "note",
+        "comparison_id"
+      ],
+      "additionalProperties": false
+    },
+    "AgentCreate": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "label",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "allow_file_outbound": {
+          "const": true
+        },
+        "method_ref": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "work_suggestion": {
+          "$ref": "#/$defs/WorkReference"
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderBinding"
+        },
+        "allow_search": {
+          "type": "boolean"
+        },
+        "allow_memory": {
+          "type": "boolean"
+        },
+        "max_decisions": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 24
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "documents": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "label",
+              "format",
+              "mode",
+              "scope"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "format": {
+                "enum": [
+                  "docx",
+                  "xlsx",
+                  "md",
+                  "txt"
+                ]
+              },
+              "mode": {
+                "enum": [
+                  "read",
+                  "update",
+                  "create"
+                ]
+              },
+              "scope": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          }
+        },
+        "tools": {
+          "$ref": "#/$defs/GeneralToolScope"
+        },
+        "goal_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "goal_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "goal_context": {
+          "$ref": "#/$defs/GoalContextApproval"
+        },
+        "execution_ref": {
+          "type": "object",
+          "properties": {
+            "execution_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "dispatch_id": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "node_id": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          "required": [
+            "execution_id",
+            "dispatch_id",
+            "node_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "title",
+        "instruction",
+        "sources",
+        "outputs",
+        "allow_file_outbound",
+        "provider",
+        "allow_search",
+        "allow_memory",
+        "max_decisions"
+      ],
+      "additionalProperties": false
+    },
+    "AgentAnswer": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "task_id",
+        "answer"
+      ],
+      "additionalProperties": false
+    },
+    "GeneralToolScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "roots",
+        "programs",
+        "urls",
+        "command_timeout_seconds",
+        "execution_seconds",
+        "max_total_tokens"
+      ],
+      "properties": {
+        "roots": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "mode",
+              "recursive",
+              "auto_create"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "mode": {
+                "enum": [
+                  "read",
+                  "write"
+                ]
+              },
+              "recursive": {
+                "type": "boolean"
+              },
+              "auto_create": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "programs": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 2,
+          "items": {
+            "enum": [
+              "python",
+              "powershell"
+            ]
+          }
+        },
+        "urls": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 6,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "command_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120
+        },
+        "execution_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1800
+        },
+        "max_total_tokens": {
+          "type": "integer",
+          "minimum": 64,
+          "maximum": 1000000
+        }
+      }
+    },
+    "AgentActionReview": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "action_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "feedback": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "task_id",
+        "action_id",
+        "feedback"
+      ],
+      "additionalProperties": false
+    },
+    "ExecutionNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "instruction": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "maxItems": 8
+        },
+        "not_before": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 80
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "root": {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                "path": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "mode": {
+                  "enum": [
+                    "exists",
+                    "changed"
+                  ]
+                }
+              },
+              "required": [
+                "root",
+                "path",
+                "mode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requires_product": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "instruction",
+        "depends_on",
+        "not_before",
+        "condition",
+        "requires_product"
+      ],
+      "additionalProperties": false
+    },
+    "ExecutionScope": {
+      "type": "object",
+      "properties": {
+        "expires_at": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderBinding"
+        },
+        "tools": {
+          "$ref": "#/$defs/GeneralToolScope"
+        },
+        "allow_memory": {
+          "type": "boolean"
+        },
+        "allow_search": {
+          "type": "boolean"
+        },
+        "allow_future_files": {
+          "type": "boolean"
+        },
+        "allow_replan": {
+          "type": "boolean"
+        },
+        "max_calls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 64,
+          "maximum": 10000000
+        },
+        "max_tasks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "max_changes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "max_commands": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "max_searches": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "max_pages": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "max_active_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        },
+        "max_decisions": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 24
+        },
+        "method_ref": {
+          "$ref": "#/$defs/MethodRef"
+        },
+        "conversation_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "expires_at",
+        "provider",
+        "tools",
+        "allow_memory",
+        "allow_search",
+        "allow_future_files",
+        "allow_replan",
+        "max_calls",
+        "max_tokens",
+        "max_tasks",
+        "max_changes",
+        "max_commands",
+        "max_searches",
+        "max_pages",
+        "max_active_seconds",
+        "max_decisions"
+      ],
+      "additionalProperties": false
+    },
+    "CreateGoalExecution": {
+      "type": "object",
+      "properties": {
+        "goal_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "goal_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scope": {
+          "$ref": "#/$defs/ExecutionScope"
+        },
+        "allow_outbound": {
+          "const": true
+        }
+      },
+      "required": [
+        "goal_id",
+        "goal_revision",
+        "scope",
+        "allow_outbound"
+      ],
+      "additionalProperties": false
+    },
+    "GetGoalExecution": {
+      "type": "object",
+      "properties": {
+        "goal_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "goal_id"
+      ],
+      "additionalProperties": false
+    },
+    "EditGoalExecutionPlan": {
+      "type": "object",
+      "properties": {
+        "execution_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExecutionNode"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        }
+      },
+      "required": [
+        "execution_id",
+        "nodes"
+      ],
+      "additionalProperties": false
+    },
+    "ApproveGoalExecution": {
+      "type": "object",
+      "properties": {
+        "execution_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "acknowledge": {
+          "const": true
+        }
+      },
+      "required": [
+        "execution_id",
+        "acknowledge"
+      ],
+      "additionalProperties": false
+    },
+    "PauseGoalExecution": {
+      "type": "object",
+      "properties": {
+        "execution_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "acknowledge": {
+          "const": true
+        }
+      },
+      "required": [
+        "execution_id",
+        "acknowledge"
+      ],
+      "additionalProperties": false
+    },
+    "ResumeGoalExecution": {
+      "type": "object",
+      "properties": {
+        "execution_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "acknowledge": {
+          "const": true
+        }
+      },
+      "required": [
+        "execution_id",
+        "acknowledge"
+      ],
+      "additionalProperties": false
+    },
+    "RevokeGoalExecution": {
+      "type": "object",
+      "properties": {
+        "execution_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "acknowledge": {
+          "const": true
+        }
+      },
+      "required": [
+        "execution_id",
+        "acknowledge"
+      ],
+      "additionalProperties": false
+    },
+    "RenewGoalExecution": {
+      "type": "object",
+      "properties": {
+        "execution_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "scope": {
+          "$ref": "#/$defs/ExecutionScope"
+        },
+        "allow_outbound": {
+          "const": true
+        }
+      },
+      "required": [
+        "execution_id",
+        "scope",
+        "allow_outbound"
+      ],
+      "additionalProperties": false
     }
   },
   "allOf": [
@@ -4249,6 +5223,516 @@
         "properties": {
           "payload": {
             "$ref": "#/$defs/ConversationWorkPage"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetInteractionExperience"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/InteractionTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "SaveInteractionFeedback"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/InteractionFeedback"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DeleteInteractionFeedback"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/InteractionDelete"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateConversationMethodProposal"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/InteractionCreate"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RunInteractionComparison"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/InteractionCompare"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ListInteractionComparisons"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/MethodTarget"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RecordInteractionMethodEvaluation"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/InteractionEvaluation"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateAgentTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/AgentCreate"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "AnswerAgentTask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/AgentAnswer"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ReviseAgentAction"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/AgentActionReview"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetInteractionMemory"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            },
+            "required": [
+              "run_id"
+            ]
+          }
+        },
+        "required": [
+          "agent_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RememberInteraction"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "run_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "kind": {
+                "enum": [
+                  "Fact",
+                  "Preference",
+                  "TemporaryState",
+                  "SharedExperience",
+                  "RelationshipUnderstanding"
+                ]
+              },
+              "content": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "confirm_local": {
+                "const": true
+              },
+              "replace_memory_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "replace_expected_revision": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "valid_from": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "valid_until": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "scope": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "run_id",
+              "kind",
+              "content",
+              "confirm_local"
+            ]
+          }
+        },
+        "required": [
+          "agent_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "OpenTaskArtifact"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "task_id",
+              "output_id"
+            ],
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "output_id": {
+                "type": "string",
+                "pattern": "^(document[1-4]|tool(-log)?:[a-zA-Z0-9-]+:[0-7])$"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateGoalExecution"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/CreateGoalExecution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "GetGoalExecution"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/GetGoalExecution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "EditGoalExecutionPlan"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/EditGoalExecutionPlan"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ApproveGoalExecution"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ApproveGoalExecution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PauseGoalExecution"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/PauseGoalExecution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ResumeGoalExecution"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ResumeGoalExecution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RevokeGoalExecution"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/RevokeGoalExecution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RenewGoalExecution"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/RenewGoalExecution"
           }
         }
       }

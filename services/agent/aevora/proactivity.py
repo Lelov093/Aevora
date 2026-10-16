@@ -54,9 +54,35 @@ class ProactivityRepository:
         if not settings['observe'] or row['goal_id'] not in json.loads(settings['goal_ids']) or self.followup_policy(db, row['agent_id'], row['goal_id'])['silenced']:
             return False
         try:
+            if json.loads(row['metadata']).get('source') == 'execution':
+                value = self.execution_context(db, row['agent_id'], row['goal_id'])
+                return value is not None and self.signature(value) == row['signature']
             return self.signature(self.context(db, row['agent_id'], row['goal_id'])) == row['signature']
         except DomainError:
             return False
+
+    def execution_context(self, db, aid, gid):
+        from .work_status import status
+        goal = self.store.goals.detail(db, aid, gid)
+        if goal['state'] != 'Active':
+            return None
+        execution = db.execute("SELECT * FROM goal_executions WHERE agent_id=? AND goal_id=? AND state<>'Revoked' ORDER BY rowid DESC LIMIT 1", (aid,gid)).fetchone()
+        if not execution:
+            return None
+        attention = []
+        for n in json.loads(execution['nodes']):
+            if n.get('retired') or not n.get('task_id'):
+                continue
+            t = self.store.tasks.target(db, aid, n['task_id'])
+            if status('task',t['state'])['category'] == 'attention':
+                step = self.store.tasks.planned.current_step(db,t['current_run_id'])
+                attention.append({'task_id':t['task_id'],'state':t['state'],'step_id':step['step_id'] if step else None})
+        if execution['state'] not in ('NeedsAttention','AwaitingPlanApproval','Completed') and not attention:
+            return None
+        refs = {'goal_id':gid,'goal_revision':goal['revision'],'execution_id':execution['execution_id'],
+                'state':execution['state'],'planning_id':execution['planning_id'],'attention':attention}
+        return {'references':refs,'followup_revision':self.followup_policy(db,aid,gid)['revision'],
+                'data':{'title':goal['title'],'label':'有工作等待你处理' if attention else status('execution',execution['state'])['label']}}
 
     def view(self, db, aid):
         settings = self.settings(db, aid)
@@ -66,6 +92,8 @@ class ProactivityRepository:
         for row in db.execute("SELECT * FROM proactive_checks WHERE agent_id=? AND state IN ('Notified','Snoozed') ORDER BY created_at DESC", (aid,)):
             if self.fresh(db, row):
                 value = {k: row[k] for k in ('check_id', 'goal_id', 'state', 'message', 'next_step', 'reason', 'notified_at', 'due_at')}
+                if json.loads(row['metadata']).get('source') == 'execution':
+                    value['execution_id'] = json.loads(row['metadata'])['execution_id']
                 notices.append(value)
         recent = [{'check_id': r['check_id'], 'goal_id': r['goal_id'], 'state': r['state'], 'decision': r['decision'],
                    'error': r['error'], 'metadata': json.loads(r['metadata'])} for r in db.execute(

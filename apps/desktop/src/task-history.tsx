@@ -14,6 +14,7 @@ export function TaskHistory({taskId,runs,sources,outputs,multi}:{taskId:string;r
     <label>回看一次执行<Select value={id} onChange={e=>setId(e.target.value)}>{runs.map((r,i)=><option key={r.run_id} value={r.run_id}>{new Date(r.created_at).toLocaleString()} · {taskNames[r.state]??r.state}{i===0?' · 最近一次':''}</option>)}</Select></label>
     {run&&<>
       <p className="small muted">历史记录不会改变当前任务、审批或回执。<br/><code>{run.run_id}</code></p>
+      {run.reply&&<section><h4>此执行的结论原稿</h4><ReportBody id={'historical-reply-'+run.run_id} text={run.reply}/></section>}
       {run.error&&<p className="error">{run.error}</p>}
       {multi&&<PlanView steps={run.steps??[]} sources={sources} outputs={outputs}/>}
       <p className="small">模型：{run.metadata.model??(run.steps?.some(s=>s.metadata?.model)?'见各步骤':'未记录或尚未调用')} · 总 tokens：{run.metadata.usage?.total_tokens??'未知或未调用'}{run.context.context_stale?' · 上下文已失效':''}</p>

@@ -130,13 +130,14 @@ def output_format(config):
 
 
 class ExtractionRuntime:
-    def __init__(self, store, config=None):
+    def __init__(self, store, config=None, evidence_dir=None):
         self.store = store
         self.gateway = ModelGateway(config)
         self.worker = None
         self.request = None
         self.closed = False
         self.error = None
+        self.evidence_dir = evidence_dir
 
     def configure(self, config):
         self.gateway.configure(config)
@@ -232,10 +233,24 @@ class ExtractionRuntime:
                 await self.gateway.stream(config, messages, consume, metadata, response_format=response_format)
             else:
                 await self.gateway.stream(config, messages, consume, metadata)
+            if self.evidence_dir:
+                self.evidence_dir.mkdir(parents=True, exist_ok=True)
+                evidence_path = self.evidence_dir / (job["job_id"] + f"-attempt-{job['attempt']+1}.json")
+                evidence = {"job_id": job["job_id"], "prompt_version": job["prompt_version"], "extractor_version": job["extractor_version"],
+                            "output": "".join(text), "metadata": metadata, "input_origin": "persisted_completed_turn", "source_range": job["source_range"]}
+                if job["extractor_version"] == "extractor-v3":
+                    evidence["source_units"] = source_units(json.loads(messages[1]["content"])["messages"])
+                    evidence["materialized_candidates"] = None
+                evidence_path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
             if metadata.get("finish_reason") != "stop":
                 raise DomainError("OutputTruncated", "Extraction did not finish normally")
             result = json.loads("".join(text))  # Strict JSON; no regex recovery or silent empty array.
             canonical = self.store.memory.complete(job["job_id"], result, metadata)
+            self.store.probe_point("memory.committed", {"agent_id": job["agent_id"],
+                "job_id": job["job_id"], "run_id": job["run_id"], "metadata": metadata})
+            if self.evidence_dir and job["extractor_version"] == "extractor-v3":
+                evidence["materialized_candidates"] = canonical
+                evidence_path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
             return
         except asyncio.CancelledError:
             error, temporary = "RuntimePausedOrStopped", True

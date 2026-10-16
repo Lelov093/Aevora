@@ -10,7 +10,6 @@ import type {Execute,Run} from './chat';
 import type {GoalApproval} from './goal-context';
 import {VoiceControls,ReadReply,speechAction} from './voice';
 import {Markdown} from './markdown';
-import {taskNames} from './task-result';
 import {Icon} from './ui';
 import {OrbVisual} from './orb';
 type PresenceConfig={enabled:boolean;always_on_top:boolean;conversation_context?:{agent_id:string;conversation_id:string;goal_context:GoalApproval|null;work_context?:WorkApproval|null;pending:boolean}|null};
@@ -29,7 +28,7 @@ export function PresenceSettings(){
 }
 export function PresenceApp(){
  const [snapshot,setSnapshot]=useState<Snapshot|null>(null),[host,setHost]=useState<Host|null>(null),[config,setConfig]=useState<PresenceConfig|null>(null);
- const [expanded,setExpanded]=useState(false),[text,setText]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[tasks,setTasks]=useState<{task_id:string;title:string;state:string}[]>([]);
+ const [expanded,setExpanded]=useState(false),[text,setText]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const [replyOpen,setReplyOpen]=useState(false);
  const [surfaceVisible,setSurfaceVisible]=useState(true),[documentVisible,setDocumentVisible]=useState(!document.hidden);
  const drag=useRef<{x:number;y:number;moved:boolean}|null>(null);
@@ -38,10 +37,10 @@ export function PresenceApp(){
  async function refresh(){const id=++generation.current;try{
    const [s,h,p,visible]=await Promise.all([send<Snapshot>({...envelope(),type:'GetSnapshot',payload:{}}),invoke<Host>('host_status'),presenceAction<PresenceConfig>('snapshot'),getCurrentWindow().isVisible()]);
    if(id!==generation.current)return;setSnapshot(s);setHost(h);setConfig(p);setSurfaceVisible(visible!==false);
-   if(s.selected_agent_id){const list=await send<{task_id:string;title:string;state:string}[]>({...envelope(),type:'ListTasks',agent_id:s.selected_agent_id,payload:{}});if(id===generation.current)setTasks(list);}else setTasks([]);
+   void invoke('frontend_snapshot',{revision:s.revision});
  }catch(e){setError(String(e));}}
  useEffect(()=>{
-   document.documentElement.classList.add('presence-document');document.body.classList.add('presence-body');void refresh();
+   document.documentElement.classList.add('presence-document');document.body.classList.add('presence-body');void invoke('frontend_ready');void refresh();
    const timer=setInterval(()=>void refresh(),3000);let pending:ReturnType<typeof setTimeout>|undefined;
    const update=()=>{if(!pending)pending=setTimeout(()=>{pending=undefined;void refresh();},80);};
    const listeners=['runtime-event','speech-event','speech-settings','presence-settings','presence-context','host-status'].map(e=>listen(e,update));
@@ -54,6 +53,7 @@ export function PresenceApp(){
    return()=>{document.removeEventListener('visibilitychange',visibility);void native.then(off=>off());};
  },[]);
  useEffect(()=>{setText('');setError('');setReplyOpen(false);},[agent?.agent_id,cid]);
+ useEffect(()=>{void invoke('frontend_identity',{view:{ui_token:'r3-presence',expanded,selected_agent:snapshot?.selected_agent,chat:snapshot?.chat,runtime_state:snapshot?.runtime_state,rendered_text:document.getElementById('presence-root')?.textContent,alerts:Array.from(document.querySelectorAll('[role="alert"]')).map(e=>e.textContent)}});},[snapshot,expanded]);
  async function act<T>(c:Command){setBusy(true);try{const result=await send<T>(c);await refresh();return result;}finally{setBusy(false);}}
  async function open(context:Record<string,unknown>={}){try{await presenceAction('open_main',{context:{agent_id:agent?.agent_id,conversation_id:cid,...context}});}catch(e){setError(String(e));}}
  async function expand(on:boolean){try{await presenceAction('expand',{expanded:on});if(!on){await speechAction('cancel_owned');}setExpanded(on);}catch(e){setError(String(e));}}
@@ -65,14 +65,14 @@ export function PresenceApp(){
  const latest=snapshot?.chat?.messages.filter(m=>m.role==='assistant').slice(-1)[0];
  const notice=snapshot?.proactivity?.notices.find(n=>n.state==='Notified');
  const due=snapshot?.scheduler?.items.find(s=>s.state==='Ready');
- const work=tasks.find(t=>t.state==='Running'),attention=notice||due||tasks.some(t=>['Unknown','AwaitingApproval'].includes(t.state));
+ const activity=snapshot?.work_activity?.primary,work=activity?.category==='working',attention=notice||due||activity?.category==='attention';
  const audio=snapshot?.speech?.activity?.agent_id===agent?.agent_id?snapshot?.speech?.activity:null;
  const foreground=host?.status!=='Ready'?'Connecting'
    :audio?.recording?'Listening'
    :audio?.state==='Speaking'?'Speaking'
    :(audio&&['Connecting','Transcribing','Synthesizing'].includes(audio.state))||active?'Thinking'
-   :work?'Working':attention?'Attention':paused?'Paused':'Idle';
- const labels:Record<string,string>={Idle:'空闲',Listening:'正在听',Speaking:'正在说话',Thinking:'正在回应',Working:'正在工作',Attention:'待你查看',Paused:'后台暂停',Connecting:'正在连接'};
+   :attention?'Attention':work?'Working':paused?'Paused':activity?.category==='waiting'?'Waiting':activity?.category==='paused'?'WorkPaused':'Idle';
+ const labels:Record<string,string>={Idle:'空闲',Listening:'正在听',Speaking:'正在说话',Thinking:'正在回应',Working:'正在工作',Waiting:'等待工作条件',WorkPaused:'工作已暂停',Attention:'待你查看',Paused:'后台暂停',Connecting:'正在连接'};
  async function submit(value:string,auto:boolean):Promise<Run|null>{
    setText(value);if(!auto)return null;if(!agent||!cid||blocked||!ready||active)throw new Error('请先打开主窗口确认上下文或等待当前回复结束。');
    setError('');const scope={agent:agent.agent_id,cid};
@@ -80,11 +80,12 @@ export function PresenceApp(){
     if(current.current.agent===scope.agent&&current.current.cid===scope.cid)setText('');return run;
    }catch(e){setError(String(e));throw e;}
  }
+ async function pauseWork(){if(!activity||!agent)return;try{if(activity.kind==='task'){const t=await send<{revision:number}>({...envelope(),type:'GetTask',agent_id:agent.agent_id,payload:{task_id:activity.id}});await act({...envelope(),type:'PauseTask',agent_id:agent.agent_id,expected_revision:t.revision,payload:{task_id:activity.id}});}else if(activity.goal_id){const e=await send<{revision:number}>({...envelope(),type:'GetGoalExecution',agent_id:agent.agent_id,payload:{goal_id:activity.goal_id}});await act({...envelope(),type:'PauseGoalExecution',agent_id:agent.agent_id,expected_revision:e.revision,payload:{execution_id:activity.id,acknowledge:true}});}}catch(e){setError(String(e));}}
  async function readSource(kind:string,id:string){try{await speechAction('speak',{agent_id:agent?.agent_id,conversation_id:cid,source:{kind,id}});}catch(e){setError(String(e));}}
  async function handleNotice(type:'DismissProactiveNotice'|'SnoozeProactiveNotice'|'HandleProactiveNotice'){
    if(!notice||!agent)return;try{
     await act(type==='SnoozeProactiveNotice'?{...envelope(),type,agent_id:agent.agent_id,payload:{check_id:notice.check_id,minutes:60}}:{...envelope(),type,agent_id:agent.agent_id,payload:{check_id:notice.check_id}});
-    if(type==='HandleProactiveNotice')await open({pane:'chat',goal_id:notice.goal_id});
+    if(type==='HandleProactiveNotice')await open(notice.execution_id?{pane:'tasks',view_goal_id:notice.goal_id}:{pane:'chat',goal_id:notice.goal_id});
    }catch(e){setError(String(e));}
  }
  return <main id="presence-root" className={(expanded?'presence-panel':'presence-orb-shell')+(!surfaceVisible||!documentVisible?' motion-paused':'')}>
@@ -102,10 +103,10 @@ export function PresenceApp(){
      <form onSubmit={e=>{e.preventDefault();void submit(text,true).catch(()=>{});}}><label className="sr-only" htmlFor="presence-input">快速消息</label><textarea id="presence-input" rows={2} maxLength={12000} value={text} onChange={e=>setText(e.target.value)} placeholder="说出需求，或写一句话…" disabled={disabled}/><button id="presence-send" disabled={disabled||!text.trim()||!ready||blocked||!!active}>发送</button></form>
      {latest&&<section className="presence-reply"><button type="button" className="text-button" aria-expanded={replyOpen} onClick={()=>setReplyOpen(!replyOpen)}>{replyOpen?'收起最近回复':'查看最近回复'}</button><div hidden={!replyOpen}><Markdown text={latest.content}/>{latest.finality==='final'&&<ReadReply agentId={agent.agent_id} cid={cid} id={latest.message_id} content={latest.content} disabled={disabled}/>}</div></section>}
      <label className="small">续办已有目标<Select id="presence-goal" value="" onChange={e=>{if(e.target.value)void open({pane:'chat',goal_id:e.target.value});}}><option value="">选择后打开主窗口确认…</option>{snapshot?.goals?.filter(g=>g.state==='Active').map(g=><option key={g.goal_id} value={g.goal_id}>{g.title}</option>)}</Select></label>
-     {snapshot?.chat?.work?.some(w=>w.state==='Pending'&&w.suggestion?.kind==='file_task'||w.state==='None'&&w.can_prepare_file)&&<button id="presence-continue-work" className="secondary" onClick={()=>void open({pane:'chat',work_run_id:snapshot.chat!.work!.find(w=>w.state==='Pending'&&w.suggestion?.kind==='file_task'||w.state==='None'&&w.can_prepare_file)!.run_id})}>沿这条需求选择文件…</button>}
+     {snapshot?.chat?.work?.some(w=>w.state==='Pending'&&['file_task','agent_task'].includes(w.suggestion?.kind??'')||w.state==='None'&&w.can_prepare_file)&&<button id="presence-continue-work" className="secondary" onClick={()=>void open({pane:'chat',work_run_id:snapshot.chat!.work!.find(w=>w.state==='Pending'&&['file_task','agent_task'].includes(w.suggestion?.kind??'')||w.state==='None'&&w.can_prepare_file)!.run_id})}>沿这条需求选择文件…</button>}
     </>}
-    {notice?<section className="presence-notice"><strong>主动跟进</strong><p>{notice.message}</p><button className="text-button" onClick={()=>void readSource('notice',notice.check_id)}>听一下</button><button disabled={disabled} onClick={()=>void handleNotice('HandleProactiveNotice')}>查看并续办…</button><button className="text-button" disabled={disabled} onClick={()=>void handleNotice('SnoozeProactiveNotice')}>稍后</button><button className="text-button" disabled={disabled} onClick={()=>void handleNotice('DismissProactiveNotice')}>忽略</button></section>:due?<section className="presence-notice"><strong>约定到期：{due.title}</strong><button className="text-button" onClick={()=>void readSource('schedule',due.schedule_id)}>听一下</button><button onClick={()=>void open({pane:'tasks',schedule_id:due.schedule_id})}>查看约定…</button></section>:null}
-    {tasks.slice(0,1).map(t=><section className="presence-task" key={t.task_id}><strong>{t.title}</strong><span> · {taskNames[t.state]??t.state}</span><button className="text-button" onClick={()=>void readSource('task',t.task_id)}>听进展</button><button className="text-button" onClick={()=>void open({pane:'tasks',task_id:t.task_id})}>查看实际任务…</button></section>)}
+    {notice?<section className="presence-notice"><strong>{notice.execution_id?"工作状态":"主动跟进"}</strong><p>{notice.message}</p><button className="text-button" onClick={()=>void readSource('notice',notice.check_id)}>听一下</button><button disabled={disabled} onClick={()=>void handleNotice('HandleProactiveNotice')}>查看并续办…</button><button className="text-button" disabled={disabled} onClick={()=>void handleNotice('SnoozeProactiveNotice')}>稍后</button><button className="text-button" disabled={disabled} onClick={()=>void handleNotice('DismissProactiveNotice')}>忽略</button></section>:due?<section className="presence-notice"><strong>约定到期：{due.title}</strong><button className="text-button" onClick={()=>void readSource('schedule',due.schedule_id)}>听一下</button><button onClick={()=>void open({pane:'tasks',schedule_id:due.schedule_id})}>查看约定…</button></section>:null}
+    {activity&&<section className="presence-task" aria-label="当前实际工作"><strong>{activity.title}</strong><p role="status">{activity.label}</p>{activity.kind==='task'&&<button className="text-button" onClick={()=>void readSource('task',activity.id)}>听进展</button>}<button className="text-button" onClick={()=>void open({pane:'tasks',...(activity.conversation_id?{conversation_id:activity.conversation_id}:{}),...(activity.kind==='task'?{task_id:activity.id}:{view_goal_id:activity.goal_id})})}>查看实际工作…</button>{['working','waiting'].includes(activity.category)&&<button className="text-button" disabled={disabled} onClick={()=>void pauseWork()}>暂停本项</button>}</section>}
     {error&&<p role="alert" className="error">{error}</p>}
    </div><footer className="presence-footer"><button id="presence-pause" className="secondary" disabled={disabled||!snapshot} onClick={()=>void act({...envelope(),type:paused?'Resume':'Pause',expected_revision:snapshot!.revision,payload:{}}).catch(e=>setError(String(e)))}>{paused?'恢复后台':'暂停后台'}</button><button id="presence-main" onClick={()=>void open({pane:'chat'})}>打开 Aevora</button></footer>
   </>}

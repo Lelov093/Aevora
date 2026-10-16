@@ -1,4 +1,4 @@
-﻿param([switch]$Dev)
+param([switch]$Dev)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $env:AEVORA_PROJECT_ROOT = $root

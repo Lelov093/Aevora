@@ -15,7 +15,7 @@ from .identity import now
 from .memory_governance import cached
 from . import relevance
 
-VERSION = "recall-v4"
+VERSION = "recall-v5"
 MINIMUM_SCORE = .40  # G4 development calibration: weakest positive .4161; strongest negative .3923.
 
 
@@ -48,7 +48,7 @@ def valid_at(row, timestamp):
 def active(db, aid):
     timestamp = datetime.now(timezone.utc)
     return [dict(r) for r in db.execute("""SELECT m.memory_id,m.agent_id,m.current_revision_id AS revision_id,
-        m.revision,m.subject_key,r.content,r.recorded_at,r.valid_from,r.valid_until,r.scope,r.evidence_kind,r.temporal_validation
+        m.revision,m.subject_key,m.type,r.content,r.recorded_at,r.valid_from,r.valid_until,r.scope,r.evidence_kind,r.temporal_validation,r.interaction_context
         FROM memories m JOIN memory_revisions r ON r.revision_id=m.current_revision_id
         WHERE m.agent_id=? AND m.status='Active'""", (aid,)) if valid_at(r, timestamp)]
 
@@ -68,6 +68,7 @@ class RecallRuntime:
         self.worker = self.request = None
         self.closed = False
         self.error = None
+        self.testing_unlimited = False
 
     def enabled(self):
         return bool(self.gateway.config.get("embedding_allowed"))
@@ -102,7 +103,8 @@ class RecallRuntime:
                 raise DomainError("RecallUnavailable", "Recall selection budget exhausted; no unfiltered fallback")
             db.execute("UPDATE selection_grants SET calls_started=calls_started+1 WHERE grant_id=?", (config["grant_id"],))
             db.execute("INSERT INTO selection_requests VALUES (?,?,'Running',NULL,?)", (request_id, aid, json.dumps(metadata)))
-        task = asyncio.create_task(relevance.judge(config, text, candidates, metadata, self.selector))
+        task = asyncio.create_task(relevance.judge(config, text, candidates, metadata, self.selector,
+            lambda: self.store.probe_point("selection.delta", {"request_id": request_id, "agent_id": aid, "metadata": metadata})))
         self.selection_tasks.add(task)
         state, error = "Failed", "RuntimeInterrupted"
         try:
@@ -145,14 +147,15 @@ class RecallRuntime:
             raise DomainError("BudgetExceeded", "Embedding input exceeds its estimate budget")
         db.execute("INSERT OR IGNORE INTO embedding_grants(grant_id) VALUES (?)", (config["grant_id"],))
         grant = db.execute("SELECT * FROM embedding_grants WHERE grant_id=?", (config["grant_id"],)).fetchone()
-        if (grant["calls_started"] >= config["max_calls"]
+        if not self.testing_unlimited and (grant["calls_started"] >= config["max_calls"]
                 or grant["input_estimate"] + estimate > config["max_total_input_tokens"]):
             raise DomainError("RecallUnavailable", "Embedding budget exhausted; no old-context fallback")
         db.execute("UPDATE embedding_grants SET calls_started=calls_started+1,input_estimate=input_estimate+? WHERE grant_id=?", (estimate, config["grant_id"]))
         return {"purpose": "MemoryEmbedding", "provider_revision": config["revision"], "grant_id": config["grant_id"],
-                "model": config["model"], "dimensions": config["dimensions"], "input_estimate": estimate}
+                "model": config["model"], "dimensions": config["dimensions"], "input_estimate": estimate,
+                "testing_unlimited": self.testing_unlimited}
 
-    async def prepare(self, aid, text, *, reply_preferences=True):
+    async def prepare(self, aid, text, *, reply_preferences=True, conversation_id=None):
         # No configured recall means Chat explicitly reports disabled recall, preserving local governance.
         if not self.gateway.config:
             return [], {"version": VERSION, "state": "Disabled", "candidates": []}
@@ -163,7 +166,9 @@ class RecallRuntime:
         key = profile(config)
         with self.store.transaction() as db:
             self.store.identity.agent(db, aid)
-            rows = active(db, aid)
+            rows = [row for row in active(db, aid) if not (
+                (local := json.loads(row['interaction_context'])).get('conversation_id')
+                and local['conversation_id'] != conversation_id)]
             if not rows:
                 return [], {"version": VERSION, "state": "Ready", "candidates": []}
             self.reconcile(db, config)
@@ -202,10 +207,14 @@ class RecallRuntime:
             logged = preferences + pool
         # Query encoding may race with an edit/delete. Recheck DB before supplying prose.
         with closing(self.store.connect()) as db:
-            if {r["revision_id"] for r in active(db, aid)} != {r["revision_id"] for r in rows} or config != self.gateway.config or selection_config != self.selector.config:
+            eligible = [r for r in active(db, aid) if not (
+                (local := json.loads(r['interaction_context'])).get('conversation_id')
+                and local['conversation_id'] != conversation_id)]
+            if {r["revision_id"] for r in eligible} != {r["revision_id"] for r in rows} or config != self.gateway.config or selection_config != self.selector.config:
                 raise DomainError("RecallUpdating", "Memory or embedding configuration changed during recall")
             for row in chosen:
-                row["sources"] = [dict(s) for s in db.execute("""SELECT ms.source_type,ms.source_id,ms.source_role,ms.created_at,
+                row['interaction_context'] = json.loads(row['interaction_context'])
+                row["sources"] = [dict(s) for s in db.execute("""SELECT ms.source_type,ms.source_id,ms.source_role,ms.relation,ms.created_at,
                     m.created_at AS source_message_created_at,m.source_timezone,
                     CASE WHEN ms.source_type='user_edit' OR (m.content IS NOT NULL AND m.content<>'') THEN 1 ELSE 0 END AS available
                     FROM memory_sources ms LEFT JOIN messages m ON ms.source_id=m.message_id AND ms.agent_id=m.agent_id

@@ -63,6 +63,8 @@ class MemoryGovernance:
 
     def invalidate(self, db, aid, revision_ids, erase=False):
         self.store.tasks.invalidate(db, aid, revision_ids, erase)
+        from .interaction_comparison_memory import invalidate
+        invalidate(self.store, db, aid, revision_ids, erase)
         affected = set()
         for run in db.execute("SELECT run_id,context FROM runs WHERE agent_id=?", (aid,)).fetchall():
             refs = json.loads(run["context"])
@@ -73,6 +75,7 @@ class MemoryGovernance:
                 refs["context_erased"] = True
             affected.add(run["run_id"])
             db.execute("UPDATE runs SET context=? WHERE run_id=?", (json.dumps(refs), run["run_id"]))
+            self.store.evolution.source_context_changed(db, aid, run['run_id'], erase)
             self.store.work.invalidate(db, aid, [run['run_id']], erase)
             db.execute("UPDATE memory_jobs SET state='Cancelled',error='ContextStale',completed_at=? WHERE run_id=? AND state<>'Completed'", (now(), run["run_id"]))
             # Completed answers are known derived context too. Erasure clears their body;
@@ -80,6 +83,7 @@ class MemoryGovernance:
             if erase:
                 db.execute("UPDATE messages SET content='',finality='partial' WHERE run_id=? AND role='assistant'", (run["run_id"],))
                 db.execute("UPDATE memory_jobs SET state='Cancelled',error='ContextStale',completed_at=? WHERE run_id=?", (now(), run["run_id"]))
+        self.store.executions.invalidate_refs(db, aid, memory_ids=revision_ids, erase=erase)
         return affected
 
     def change(self, db, c):
@@ -179,6 +183,7 @@ class MemoryGovernance:
             self.change(db, c | {"type": "DeleteMemory", "expected_revision": expected[mid], "payload": {"memory_id": mid}})
         messages = {r[0] for r in db.execute("SELECT message_id FROM messages WHERE conversation_id=? AND agent_id=?", (cid, aid))}
         runs = {r[0] for r in db.execute("SELECT run_id FROM runs WHERE conversation_id=? AND agent_id=?", (cid, aid))}
+        self.store.interaction_learning.delete_conversation(db, aid, cid)
         for sid in messages:
             db.execute("INSERT OR IGNORE INTO memory_revocations VALUES (?,?,'ConversationDeleted')", (aid, sid))
         # References from other conversations must not reuse erased history.

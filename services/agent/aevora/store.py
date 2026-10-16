@@ -21,8 +21,11 @@ from .goals import MIGRATION as GOAL_MIGRATION, GoalRepository, COMMANDS as GOAL
 from .work import MIGRATION as WORK_MIGRATION, WorkRepository, COMMANDS as WORK_COMMANDS
 from .evolution import MIGRATION as EVOLUTION_MIGRATION, EvolutionRepository, COMMANDS as EVOLUTION_COMMANDS
 from .proactivity import MIGRATION as PROACTIVE_MIGRATION, ProactivityRepository, COMMANDS as PROACTIVE_COMMANDS
+from .interaction_learning import MIGRATION as INTERACTION_MIGRATION, InteractionLearning, COMMANDS as INTERACTION_COMMANDS
+from .agent_tasks import MIGRATION as AGENT_MIGRATION
+from .executions import ExecutionRepository, MIGRATION as EXECUTION_MIGRATION, COMMANDS as EXECUTION_COMMANDS
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 21
 MIGRATIONS = {1: (
     "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, revision INTEGER NOT NULL)",
     "INSERT INTO settings VALUES ('runtime', 'Running', 0)",
@@ -60,14 +63,17 @@ MIGRATIONS = {1: (
     "ALTER TABLE conversations ADD COLUMN resume_goal_id TEXT REFERENCES goals(goal_id)",
     "UPDATE conversations SET resume_goal_id=(SELECT g.goal_id FROM runs r JOIN goals g ON g.goal_id=json_extract(r.context,'$.goal_context.goal_id') AND g.agent_id=r.agent_id AND g.state='Active' WHERE r.conversation_id=conversations.conversation_id AND r.agent_id=conversations.agent_id AND r.rowid=(SELECT MAX(x.rowid) FROM runs x WHERE x.conversation_id=conversations.conversation_id))",
     "CREATE TABLE goal_followup_policy(goal_id TEXT PRIMARY KEY REFERENCES goals(goal_id),agent_id TEXT NOT NULL REFERENCES agents(agent_id),revision INTEGER NOT NULL,silenced INTEGER NOT NULL,source_message_id TEXT REFERENCES messages(message_id),updated_at TEXT NOT NULL)",
-)}
+), 18: INTERACTION_MIGRATION, 19: AGENT_MIGRATION, 20: (
+    "ALTER TABLE memory_revisions ADD COLUMN interaction_context TEXT NOT NULL DEFAULT '{}'",
+), 21: EXECUTION_MIGRATION}
 
 class Store:
-    def __init__(self, path: Path, input_timezone=INPUT_TIMEZONE):
+    def __init__(self, path: Path, input_timezone=INPUT_TIMEZONE, probe=None):
         input_zone(input_timezone)
         self.input_timezone = input_timezone
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
+        self.probe = probe
         self.migrate()
         with closing(self.connect()) as db:
             self.identity = IdentityRepository(db.execute(
@@ -81,7 +87,13 @@ class Store:
         self.goals = GoalRepository(self)
         self.work = WorkRepository(self)
         self.evolution = EvolutionRepository(self)
+        self.interaction_learning = InteractionLearning(self)
         self.proactivity = ProactivityRepository(self)
+        self.executions = ExecutionRepository(self)
+
+    def probe_point(self, point, payload):
+        if self.probe is not None:
+            self.probe.hit(point, payload)
 
     def connect(self):
         db = sqlite3.connect(self.path, timeout=5)
@@ -126,6 +138,7 @@ class Store:
                 db.execute("PRAGMA foreign_keys=ON")
 
     def snapshot(self):
+        from .work_status import activity
         with closing(self.connect()) as db:
             db.execute("BEGIN")
             row = db.execute("SELECT value, revision FROM settings WHERE key='runtime'").fetchone()
@@ -138,6 +151,7 @@ class Store:
                     "selected_agent": self.identity.profile(db, selected) if selected else None,
                     "scheduler": self.scheduler.view(db, selected) if selected else None,
                     "goals": self.goals.list(db, selected) if selected else [],
+                    "work_activity": activity(db, selected),
                     "proactivity": self.proactivity.view(db, selected) if selected else None,
                     "chat": self.conversation.snapshot(db, selected) if selected else None}
 
@@ -147,6 +161,25 @@ class Store:
                     for r in db.execute("SELECT * FROM events WHERE sequence>? ORDER BY sequence LIMIT 100", (after,))]
 
     def execute(self, command):
+        if command['type'] in EXECUTION_COMMANDS:
+            return self.executions.execute(command)
+        if command['type'] in ('GetInteractionMemory', 'RememberInteraction'):
+            from .interaction_memory import view, remember
+            serialized = json.dumps(command, sort_keys=True, separators=(',', ':'))
+            with self.transaction() as db:
+                if command['type'] == 'GetInteractionMemory':
+                    data = view(self, db, command['agent_id'], command['payload']['run_id'])
+                else:
+                    old = cached(db, command, serialized)
+                    if old is not None:
+                        return old
+                    data = remember(self, db, command)
+                response = {'command_id': command['command_id'], 'status': 'persisted', 'data': data}
+                if command['type'] == 'RememberInteraction':
+                    db.execute('INSERT INTO command_results VALUES (?,?,?)', (command['command_id'], serialized, json.dumps(response)))
+                return response
+        if command['type'] in INTERACTION_COMMANDS:
+            return self.interaction_learning.execute(command)
         if command['type'] in EVOLUTION_COMMANDS:
             return self.evolution.execute(command)
         if command['type'] in PROACTIVE_COMMANDS:

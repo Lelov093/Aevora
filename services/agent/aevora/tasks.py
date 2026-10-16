@@ -13,6 +13,8 @@ from . import task_report
 from .recall import current
 from .planned_tasks import PlannedRepository, PlannedRuntime, COMMANDS as PLAN_COMMANDS
 from .network_tasks import NetworkRepository, NetworkRuntime, COMMANDS as NETWORK_COMMANDS, candidates
+from .agent_tasks import AgentRepository, COMMANDS as AGENT_COMMANDS
+from .agent_runtime import AgentRuntime
 
 MIGRATION = (
     """CREATE TABLE tasks(task_id TEXT PRIMARY KEY,agent_id TEXT NOT NULL REFERENCES agents(agent_id),
@@ -26,7 +28,7 @@ MIGRATION = (
     body TEXT NOT NULL,state TEXT NOT NULL,receipt TEXT,created_at TEXT NOT NULL)""",
 )
 READS = {"ListTasks", "GetTask"}
-COMMANDS = READS | PLAN_COMMANDS | NETWORK_COMMANDS | {"CreateTask", "RetryTask", "PauseTask", "CancelTask", "ApproveTask", "RejectTask", "RevokeTaskPermission"}
+COMMANDS = READS | PLAN_COMMANDS | NETWORK_COMMANDS | AGENT_COMMANDS | {"CreateTask", "RetryTask", "PauseTask", "CancelTask", "ApproveTask", "RejectTask", "RevokeTaskPermission"}
 
 
 class TaskRepository:
@@ -34,6 +36,7 @@ class TaskRepository:
         self.store = store
         self.planned = PlannedRepository(store)
         self.network = NetworkRepository(store, self.planned)
+        self.agent = AgentRepository(store)
 
     def target(self, db, aid, tid):
         self.store.identity.agent(db, aid)
@@ -57,23 +60,35 @@ class TaskRepository:
             run["action"] = dict(action) if action else None
             if action:
                 run["action"]["receipt"] = json.loads(action["receipt"]) if action["receipt"] else None
-            if value['kind'] in ('plan','network'):
+            if value['kind'] in ('plan','network','agent'):
                 run['steps']=self.planned.steps(db,row['run_id'])
-                pending=next((s for s in run['steps'] if s['state']!='Completed'),None)
+                pending=next((s for s in run['steps'] if not self.planned.resolved(s)),None)
                 run['action']=pending['action'] if pending else None
             runs.append(run)
         value["runs"] = runs
-        if value['kind'] in ('plan','network'):value['current_step']=next((s for s in runs[0]['steps'] if s['state']!='Completed'),None)
+        if value['kind'] in ('plan','network','agent'):value['current_step']=next((s for s in runs[0]['steps'] if not self.planned.resolved(s)),None)
+        if value['kind']=='agent':
+            from .agent_actions import source_catalog, local_evidence
+            value['agent_limits']=json.loads(value['agent_limits'])
+            value['candidates']=source_catalog(runs[0]['steps'])
+            value['local_evidence']=local_evidence(value['sources'],runs[0]['steps'])
         if value['kind']=='network':
             value['candidates']=candidates(runs[0]['steps'])
             value['network']=runs[0]['context']
+        if value['kind'] in ('network','agent'):
             value['network_requests']=[dict(r) | {'metadata':json.loads(r['metadata'])} for r in db.execute('SELECT n.* FROM network_requests n JOIN task_runs r ON r.run_id=n.run_id WHERE r.task_id=? ORDER BY n.rowid',(tid,))]
         value["activity"] = [dict(e) for e in db.execute("SELECT type,timestamp FROM events WHERE agent_id=? AND json_extract(payload,'$.task_id')=? ORDER BY sequence", (aid, tid))]
+        if value['kind']=='agent':
+            source=runs[0]['context']
+            cid=source.get('source_conversation_id')
+            value['agent_source']={'conversation_id':cid,'available':bool(cid and db.execute("SELECT 1 FROM conversations WHERE conversation_id=? AND agent_id=? AND status<>'Deleted'",(cid,aid)).fetchone())}
         value['schedule'] = self.store.scheduler.for_task(db, aid, tid)
         value['goal'] = self.store.goals.for_work(db, aid, 'task', tid)
         source = db.execute("SELECT r.conversation_id,r.input_message_id,c.status FROM work_responses w JOIN runs r USING(run_id) JOIN conversations c USING(conversation_id) WHERE w.task_id=? AND w.agent_id=?", (tid, aid)).fetchone()
         if source:
             value['work_source'] = {'conversation_id': source['conversation_id'], 'message_id': source['input_message_id'], 'available': source['status'] != 'Deleted'}
+        if not value.get('work_source') and value.get('agent_source',{}).get('conversation_id'):
+            value['work_source']=value['agent_source']
         return value
 
     def transition(self, db, row, state, error=None, receipt=None):
@@ -95,6 +110,11 @@ class TaskRepository:
 
     def execute(self, c):
         aid, kind, p = c["agent_id"], c["type"], c["payload"]
+        if kind in AGENT_COMMANDS:
+            return self.agent.execute(c)
+        if kind not in READS and kind not in ('CreateTask','CreatePlannedTask','CreateNetworkTask'):
+            with closing(self.store.connect()) as db:
+                if self.target(db,aid,p['task_id'])['kind']=='agent':return self.agent.execute(c)
         if kind in NETWORK_COMMANDS:return self.network.execute(c)
         if kind in PLAN_COMMANDS and not (kind == 'EditTaskBody' and self._is_report(aid, p['task_id'])):
             if kind != 'CreatePlannedTask':
@@ -182,6 +202,8 @@ class TaskRepository:
             response = {"command_id": c["command_id"], "status": "persisted", "data": data}
             if kind not in READS:
                 db.execute("INSERT INTO command_results VALUES (?,?,?)", (c["command_id"], serialized, json.dumps(response)))
+        if kind == "ApproveTask":
+            self.store.probe_point("action.intent", {"task_id": tid, "action_id": data["runs"][0]["action"]["action_id"]})
         return response
 
     def _is_report(self, aid, tid):
@@ -191,10 +213,11 @@ class TaskRepository:
     def receipt(self, value):
         aid, tid, action_id = value["agent_id"], value["task_id"], value["action_id"]
         with closing(self.store.connect()) as db:
-            if self.target(db,aid,tid)['kind'] in ('plan','network'):return self.planned.receipt(value)
+            if self.target(db,aid,tid)['kind'] in ('plan','network','agent'):return self.planned.receipt(value)
         receipt = value["receipt"]
         if receipt.get("outcome") not in ("Success", "NotExecuted", "Unknown"):
             raise DomainError("ValidationError", "Invalid native receipt")
+        self.store.probe_point("action.before_receipt", {"task_id": tid, "action_id": action_id, "receipt": receipt})
         with self.store.transaction() as db:
             row = self.target(db, aid, tid)
             action = db.execute("SELECT * FROM task_actions WHERE action_id=? AND run_id=?", (action_id, row["current_run_id"])).fetchone()
@@ -245,33 +268,37 @@ class TaskRuntime:
         self.metadata = {}
         self.planned = PlannedRuntime(store,gateway,recall)
         self.network = NetworkRuntime(store,gateway,recall)
+        self.agent = AgentRuntime(store,gateway,recall)
 
     @property
-    def active(self):return bool(self.tasks or self.planned.tasks or self.network.tasks)
+    def active(self):return bool(self.tasks or self.planned.tasks or self.network.tasks or self.agent.tasks)
 
     def command(self, command):
-        if command['type'] in ('ApproveTaskPlan','ApproveTask','RetryTask'):
+        if command['type'] in ('ApproveTaskPlan','ApproveTask','RetryTask','ReviseAgentAction'):
             with closing(self.store.connect()) as db:
                 row=self.store.tasks.target(db,command['agent_id'],command['payload']['task_id'])
-                if row['kind'] in ('plan','network'):
+                if row['kind'] in ('plan','network','agent'):
                     refs=json.loads(db.execute('SELECT context FROM task_runs WHERE run_id=?',(row['current_run_id'],)).fetchone()[0])
                     config=self.gateway.ready()
                     if refs.get('provider') and refs['provider']!={k:config[k] for k in ('base_url','model','revision')}:
                         raise DomainError('Forbidden','Provider binding changed; create a newly authorized task')
         response = self.store.tasks.execute(command)
         self.invalidate()
-        if isinstance(response['data'],dict) and response['data'].get('kind') in ('plan','network'):
-            (self.network if response['data']['kind']=='network' else self.planned).pump(command['agent_id'],response['data']['task_id'])
+        if isinstance(response['data'],dict) and response['data'].get('kind') in ('plan','network','agent'):
+            (self.agent if response['data']['kind']=='agent' else self.network if response['data']['kind']=='network' else self.planned).pump(command['agent_id'],response['data']['task_id'])
         return response
 
     def receipt(self,value):
         result=self.store.tasks.receipt(value)
-        if result.get('kind') in ('plan','network'):(self.network if result['kind']=='network' else self.planned).pump(value['agent_id'],value['task_id'])
+        if result.get('kind') in ('plan','network','agent'):(self.agent if result['kind']=='agent' else self.network if result['kind']=='network' else self.planned).pump(value['agent_id'],value['task_id'])
         return result
 
     def input(self, value):
         aid, tid = value["agent_id"], value["task_id"]
         with closing(self.store.connect()) as db:
+            if self.store.tasks.target(db,aid,tid)['kind']=='agent':
+                self.agent.input(value)
+                return self.store.tasks.detail(db,aid,tid)
             if self.store.tasks.target(db,aid,tid)['kind']=='network':
                 self.network.input(value)
                 return self.store.tasks.detail(db,aid,tid)
@@ -302,6 +329,10 @@ class TaskRuntime:
             return self.store.tasks.detail(db, aid, tid)
 
     def fail_input(self, value):
+        with closing(self.store.connect()) as db:
+            if self.store.tasks.target(db,value['agent_id'],value['task_id'])['kind']=='agent':
+                self.agent.input(value)
+                return self.store.tasks.detail(db,value['agent_id'],value['task_id'])
         with self.store.transaction() as db:
             row = self.store.tasks.target(db, value["agent_id"], value["task_id"])
             if row["state"] == "Created":
@@ -385,6 +416,7 @@ class TaskRuntime:
             self.metadata.pop(rid, None)
 
     def invalidate(self):
+        self.agent.invalidate()
         self.planned.invalidate()
         self.network.invalidate()
         for rid, task in list(self.tasks.items()):
@@ -403,5 +435,6 @@ class TaskRuntime:
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
+        await self.agent.close()
         await self.planned.close()
         await self.network.close()

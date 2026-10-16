@@ -12,6 +12,8 @@ from .memory_governance import cached
 class EvolutionRuntime:
     def __init__(self, store, gateway):
         self.store, self.gateway, self.tasks = store, gateway, {}
+        from .interaction_evaluation import InteractionEvaluationRuntime
+        self.comparisons = InteractionEvaluationRuntime(store, gateway)
 
     def command(self, c):
         with closing(self.store.connect()) as db:
@@ -30,11 +32,19 @@ class EvolutionRuntime:
 
     async def generate(self, row, config):
         pid, aid = row['proposal_id'], row['agent_id']
+        family = row.get('family', 'preparation_update')
+        family_prompt = {
+            'preparation_update': 'First read/compare prior progress and all new selected sources, synthesize one combined update, then user review before writing. Preserve unknown/pending and avoid repeating completed work.',
+            'collaboration': 'Learn a reusable collaboration/planning/checking strategy for authorized file and public-information work, including choosing actions from real observations and checking results. Adapt to actual requirements and selected materials; do not demand an irrelevant fixed workflow or invent extra tools.',
+            'communication': 'Learn a conditional interaction strategy, not a fixed response or personal fact. Describe both when it applies and when it must not apply. Support companionship and honest independent judgment; avoid mechanical agreement, excessive comfort or forcing casual conversation into tasks. Explicit requests for practical help must still receive practical help.'}[family]
         messages = [{'role': 'system', 'content':
-            'Propose ONE reusable procedural method for preparation_update tasks, based on the supplied real experience and explicit improvement objective. '
-            'Return strict JSON only with family="preparation_update", title, applicability, procedure (1-6 strings), checks (1-6 strings), rationale and limits. '
-            'Procedure must first read/compare prior progress and all new selected sources, then synthesize one combined update, then let the user review before writing. '
+            f'Propose ONE reusable {family} strategy based on the supplied experience and explicit objective. '
+            f'Return strict JSON only with family="{family}", title, applicability, procedure (1-6 strings), checks (1-6 strings), rationale and limits. '
+            + family_prompt + ' '
             'Generalize the method, not the personal facts. Do not include names, old resource paths, private course details, code, credentials or grants. '
+            'memory_context records the exact understanding used by the reply, not proven user personality. '
+            'Distinguish an unsuitable remembered interpretation from a reusable interaction strategy; '
+            'do not convert temporary states, personal preferences or shared experiences into universal rules. '
             'Preserve unknown/pending versus explicit absence, avoid repeating completed work. No claim of improvement before independent evaluation. '
             'If a baseline_method is supplied, revise that reviewed method using the new feedback; retain useful steps and explain the change in rationale. '
             'applied_method_ref describes the work attempt, not necessarily the current baseline. Body reviews distinguish original and user-edited results. '
@@ -60,6 +70,8 @@ class EvolutionRuntime:
             if metadata.get('finish_reason') != 'stop':
                 raise DomainError('OutputTruncated', 'Incomplete method candidate')
             method = validate_method(strict_json(raw))
+            if method['family'] != family:
+                raise DomainError('InvalidMethod', 'Generated strategy changed the approved learning family')
         except asyncio.CancelledError:
             error = 'RuntimeInterrupted'
         except DomainError as exc:
@@ -79,12 +91,14 @@ class EvolutionRuntime:
             self.tasks.pop(pid, None)
 
     async def pause(self):
+        await self.comparisons.pause()
         tasks = list(self.tasks.values())
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def invalidate(self):
+        await self.comparisons.invalidate()
         stopped = []
         with closing(self.store.connect()) as db:
             for pid, task in list(self.tasks.items()):

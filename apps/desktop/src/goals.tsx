@@ -1,7 +1,8 @@
+import {GoalExecution} from './goal-execution';
 import {GoalFollowupDialog} from './goal-followup';
 import {CheckField,Select} from './controls';
 import {useEffect,useState} from 'react';
-import type {Execute} from './chat';
+import type {Execute,Provider} from './chat';
 import {Modal,PageTabs} from './ui';
 import type {Schedule,ScheduleView,TaskResultValue} from './schedules';
 import {TaskResult} from './task-result';
@@ -41,7 +42,7 @@ export function GoalDialog({agentId,value,source,initial,workReference,disabled,
  </Modal>;
 }
 
-export function GoalsPanel({agentId,items,sequence,disabled,read,execute,tasks,scheduler,prepare,remind,resume,openTask,openSchedule,openConversation,focusId}:{focusId?:string|null;agentId:string;items:GoalSummary[];sequence:number;disabled:boolean;read:Execute;execute:Execute;tasks:{task_id:string;title:string;revision:number;goal?:GoalSummary|null}[];scheduler?:ScheduleView;prepare:(g:Goal)=>void;remind:(g:Goal)=>void;resume:(g:Goal)=>void;openTask:(id:string)=>void;openSchedule:(id:string)=>void;openConversation:(id:string,messageId?:string)=>Promise<void>}){
+export function GoalsPanel({provider,agentId,items,sequence,disabled,read,execute,tasks,scheduler,prepare,remind,resume,openTask,openSchedule,openConversation,focusId}:{focusId?:string|null;provider:Provider;agentId:string;items:GoalSummary[];sequence:number;disabled:boolean;read:Execute;execute:Execute;tasks:{task_id:string;title:string;revision:number;goal?:GoalSummary|null}[];scheduler?:ScheduleView;prepare:(g:Goal)=>void;remind:(g:Goal)=>void;resume:(g:Goal)=>void;openTask:(id:string)=>void;openSchedule:(id:string)=>void;openConversation:(id:string,messageId?:string)=>Promise<void>}){
  const [followup,setFollowup]=useState<boolean|null>(null);
  const [detailTab,setDetailTab]=useState<'overview'|'work'|'history'>('overview');
  const [id,setId]=useState(focusId??''),[goal,setGoal]=useState<Goal|null>(null),[dialog,setDialog]=useState<'new'|'edit'|null>(null),[error,setError]=useState('');
@@ -72,7 +73,7 @@ export function GoalsPanel({agentId,items,sequence,disabled,read,execute,tasks,s
     {goal.state==='Active'?<><button id="resume-goal-chat" disabled={disabled} onClick={()=>resume(goal)}>新会话回看与续办…</button><button id="goal-prepare-task" className="secondary" disabled={disabled||!goal.next_step.trim()} onClick={()=>prepare(goal)}>准备下一项文件任务…</button><button id="goal-remind" className="secondary" disabled={disabled||!scheduler?.settings.enabled} onClick={()=>remind(goal)}>约定回看时间…</button></>:<button className="secondary" id="reactivate-goal" disabled={disabled} onClick={()=>ask('Active')}>恢复目标…</button>}
    </div>
    {!scheduler?.settings.enabled&&goal.state==='Active'&&<p className="small muted">如需单次回看提醒，请在事项的“时间约定”中启用此 Agent 的定时提醒。</p>}
-   </div><div hidden={detailTab!=="work"}><h4>关联工作（独立指令与权限）</h4>
+   <GoalExecution agentId={agentId} goal={goal} provider={provider} sequence={sequence} disabled={disabled} schedulerEnabled={!!scheduler?.settings.enabled} read={read} execute={execute} openTask={openTask}/></div><div hidden={detailTab!=="work"}><h4>关联工作（独立指令与权限）</h4>
    {goal.tasks.map(t=><div key={t.task_id} className="goal-work"><strong>{t.title}</strong><TaskResult schedule={{schedule_id:goal.goal_id+':'+t.task_id,task_id:t.task_id,task_result:t}} disabled={disabled} openTask={()=>openTask(t.task_id)}/><button className="text-button" disabled={disabled} onClick={()=>void link('task',t.task_id,t.revision,true)}>解除目标关联</button></div>)}
    {goal.schedules.map(s=><div key={s.schedule_id} className="goal-work"><button className="text-button" disabled={disabled} onClick={()=>openSchedule(s.schedule_id)}>{s.title} · {s.state} · {new Date(s.due_at).toLocaleString()}</button><button className="text-button" disabled={disabled} onClick={()=>void link('schedule',s.schedule_id,s.revision,true)}>解除目标关联</button></div>)}
    {!goal.tasks.length&&!goal.schedules.length&&<p className="small muted">尚未关联任务或约定。</p>}
@@ -84,7 +85,7 @@ export function GoalsPanel({agentId,items,sequence,disabled,read,execute,tasks,s
   {followup!==null&&goal&&<GoalFollowupDialog agentId={agentId} goals={items} seedId={goal.goal_id} silenced={followup} disabled={disabled} execute={execute} close={()=>setFollowup(null)}/>}
   {dialog&&<GoalDialog agentId={agentId} value={dialog==='edit'?goal??undefined:undefined} disabled={disabled} execute={execute} close={()=>setDialog(null)} saved={g=>{setId(g.goal_id);setGoal(g);}}/>}
   <Modal open={!!action} close={()=>setAction(null)} title={action==='Delete'?'删除目标':action==='Completed'?'确认目标达成':'更改目标状态'} id="goal-state-dialog">
-   <p>{action==='Delete'?'清除目标正文、修订与续办回复，并解除关联；独立任务、时间约定、你的输入、原会话和外部文件保留。此操作无法撤回。':action==='Completed'?'请对照达成条件确认；任务 Completed 或成功写入回执不替代你的判断。':'此操作只改变目标及续办上下文。独立任务和时间约定继续按原权限运行，需分别暂停、取消或撤权。'}</p>
+   <p>{action==='Delete'?'清除目标正文、修订与续办回复，并解除关联；独立任务、时间约定、你的输入、原会话和外部文件保留。此操作无法撤回。':action==='Completed'?'请对照达成条件确认；任务 Completed 或成功写入回执不替代你的判断。':'此操作会停止此目标的长期执行及其派发工作。独立关联任务和时间约定仍按原权限运行，需分别暂停、取消或撤权。'}</p>
    {action==='Completed'&&<><blockquote>{goal?.success_criteria}</blockquote><label>为什么已达成<textarea id="goal-completion-reason" maxLength={1000} value={reason} onChange={e=>{setReason(e.target.value);setConfirmed(false);}}/></label></>}
    <label className="check"><CheckField id="goal-state-confirm" type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>我理解上述范围并确认</label>
    {error&&<p className="error" role="alert">{error}</p>}

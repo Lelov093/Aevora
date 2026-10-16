@@ -183,6 +183,10 @@ class GoalRepository:
         for run in db.execute('SELECT r.* FROM task_runs r JOIN tasks t USING(task_id) WHERE t.agent_id=?', (aid,)).fetchall():
             context = json.loads(run['context'])
             refs = context.get('task_goal_context', {})
+            if not refs and erase and gid is not None:
+                owner = self.store.executions.owner(db, run['task_id'])
+                if owner and owner['goal_id'] == gid:
+                    refs = {'goal_id': gid}
             if not refs or (gid is not None and refs['goal_id'] != gid) or (
                     feedback_run_id is not None and not any(f['run_id'] == feedback_run_id for f in refs.get('feedback', []))):
                 continue
@@ -304,6 +308,7 @@ class GoalRepository:
                     db.execute('DELETE FROM goal_schedules WHERE goal_id=?', (gid,))
                 else:
                     raise DomainError('ValidationError', 'Unknown Goal command')
+            self.store.executions.goal_changed(db, aid, gid)
             self.store.memory.event(db, kind, aid, {'goal_id': gid}, c['command_id'], 'user')
             data = {'goal_id': gid, 'deleted': True} if kind == 'DeleteGoal' else self.detail(db, aid, gid)
             response = {'command_id': c['command_id'], 'status': 'persisted', 'data': data}

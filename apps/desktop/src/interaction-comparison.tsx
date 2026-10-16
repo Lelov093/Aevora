@@ -1,0 +1,36 @@
+import {useEffect,useRef,useState} from 'react';
+import {CheckField} from './controls';
+import {Markdown} from './markdown';
+import type {Execute,Provider,Conversation} from './chat';
+import type {Command} from '../../../packages/protocol/command';
+import {ComparisonMemoryPicker,type CaseMemory} from './comparison-memory';
+import {understandingNames,type MemoryReference} from './interaction-memory';
+import {providerBinding,type Proposal} from './methods';
+
+type Result={case:number;role:'baseline'|'candidate';state:string;text?:string;raw?:string;error?:string;metadata?:{usage?:{total_tokens?:number}}};
+type Comparison={comparison_id:string;proposal_revision:number;state:string;cases:string[];results:Result[];error?:string;context_current?:boolean;memory_contexts?:{conversation_id:string;memories:MemoryReference[]}[]};
+const envelope=()=>({protocol_version:1 as const,command_id:crypto.randomUUID()});
+const explain=(e:unknown)=>{try{return JSON.parse(String(e)).error?.message??String(e);}catch{return String(e);}};
+
+export function InteractionComparisonPanel({agentId,value,provider,sequence,disabled,read,execute}:{agentId:string;value:Proposal;provider:Provider;sequence:number;disabled:boolean;read:Execute;execute:Execute}){
+ const [cases,setCases]=useState(['','','']),[comparisons,setComparisons]=useState<Comparison[]>([]),[consent,setConsent]=useState(false);
+ const [memoryCases,setMemoryCases]=useState<CaseMemory[]>(Array.from({length:3},()=>({conversation_id:value.experience?.conversation_id??'',memories:[]}))),[conversations,setConversations]=useState<Conversation[]>([]),[memoryBusy,setMemoryBusy]=useState([false,false,false]);
+ const pending=useRef<Command|null>(null);
+ const [checks,setChecks]=useState(value.criteria.map(()=>false)),[improved,setImproved]=useState(false),[retained,setRetained]=useState(false),[note,setNote]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{let alive=true;void read<Comparison[]>({...envelope(),type:'ListInteractionComparisons',agent_id:agentId,payload:{proposal_id:value.proposal_id}}).then(v=>{if(alive)setComparisons(v);}).catch(e=>{if(alive)setError(explain(e));});return()=>{alive=false;};},[agentId,value.proposal_id,value.revision,sequence]);
+ useEffect(()=>{let alive=true;void read<Conversation[]>({...envelope(),type:'ListConversations',agent_id:agentId,payload:{}}).then(v=>{if(alive)setConversations(v);}).catch(e=>{if(alive)setError(explain(e));});return()=>{alive=false;};},[agentId]);
+ useEffect(()=>{setConsent(false);pending.current=null;},[provider.base_url,provider.model,provider.revision,value.revision,sequence]);
+ function changeMemory(index:number,v:CaseMemory){setMemoryCases(old=>old.map((c,i)=>i===index?v:c));setConsent(false);pending.current=null;}
+ const current=comparisons.find(c=>c.proposal_revision===value.revision);
+ async function compare(){setBusy(true);setError('');try{pending.current??={...envelope(),type:'RunInteractionComparison',agent_id:agentId,expected_revision:value.revision,payload:{proposal_id:value.proposal_id,cases,provider:providerBinding(provider),allow_outbound:true,...(memoryCases.some(c=>c.memories.length)?{memory_contexts:memoryCases.map(c=>({conversation_id:c.conversation_id,memories:c.memories.map(m=>({memory_id:m.memory_id,revision_id:m.revision_id}))}))}:{})}};await execute(pending.current);pending.current=null;setConsent(false);}catch(e){setError(explain(e));}finally{setBusy(false);}}
+ async function record(){if(!current)return;setBusy(true);setError('');try{await execute({...envelope(),type:'RecordInteractionMethodEvaluation',agent_id:agentId,expected_revision:value.revision,payload:{proposal_id:value.proposal_id,comparison_id:current.comparison_id,checks,improved,no_regression:retained,reviewer:'user',note}});}catch(e){setError(explain(e));}finally{setBusy(false);}}
+ return <section id="interaction-comparison-panel">
+  {value.state==='Evaluating'&&!current&&<><p>选择两种未用于学习的新情境，再选一种需要保留的旧能力情境。每种分别使用原策略和候选策略回答；当前 Persona 相同，不加载历史，也不写入原对话；可为每个情境明确选择记忆。</p>
+   {['新情境一','新情境二','旧能力检查情境'].map((label,i)=><div key={label}><label>{label}<textarea id={`interaction-case-${i}`} maxLength={2000} value={cases[i]} onChange={e=>{setCases(old=>old.map((v,j)=>i===j?e.target.value:v));setConsent(false);pending.current=null;}} disabled={busy}/></label><ComparisonMemoryPicker agentId={agentId} index={i} value={memoryCases[i]} conversations={conversations} disabled={disabled||busy} read={read} change={v=>changeMemory(i,v)} loading={v=>setMemoryBusy(old=>old.map((b,j)=>i===j?v:b))}/></div>)}
+   <details><summary>比较范围与用量</summary><p>三个情境、当前 Persona、已采用沟通策略、候选完整内容及上方明确选定的记忆正文、证据性质与版本发送至 {provider.base_url} / {provider.model}。最多六次模型请求，受当前每次输入／输出限额约束；失败保留，后续请求停止，不自动重试。本比较不证明长期收益。</p></details>
+   <label className="check"><CheckField id="interaction-comparison-consent" checked={consent} onChange={e=>setConsent(e.target.checked)}/>允许这一次独立比较使用上述内容</label><button id="interaction-comparison-run" disabled={disabled||busy||memoryBusy.some(Boolean)||!consent||memoryCases.some(c=>c.memories.length&&!c.conversation_id)||cases.some(c=>!c.trim())||!provider.credential_present} onClick={()=>void compare()}>生成三组比较</button></>}
+  {comparisons.map(c=><details key={c.comparison_id} open={c===current}><summary>候选版本 {c.proposal_revision} · {c.state==='Completed'?'比较已完成，收益待判断':c.state==='Running'?'比较生成中':c.state} {c.error??''}</summary>{(c.state==='Invalidated'||c.context_current===false)&&<p className="notice">比较依据已改变，原稿仅供回看，不能据此采用候选；遗忘的派生内容不再展示。</p>}{c.cases.map((text,i)=><section key={i}><h4>{i===2?'旧能力检查':'新情境 '+(i+1)}</h4><p>{text}</p>{(c.memory_contexts?.[i]?.memories??[]).length>0&&<details><summary>两种策略共同参考的记忆</summary>{c.memory_contexts?.[i]?.memories.map(m=><p key={m.revision_id}>{m.interaction_context?.kind?understandingNames[m.interaction_context.kind]:'事实／偏好'}：{m.content}{!m.current?'（历史版本，需重新核对）':''}</p>)}</details>}{(['baseline','candidate'] as const).map(role=>{const r=c.results.find(r=>r.case===i&&r.role===role);return <div key={role}><strong>{role==='baseline'?'原策略':'候选策略'} · {r?.state??'尚未请求'}</strong><div className="message-content"><Markdown text={r?.text??''}/></div>{r?.error&&<p className="error">{r.error}</p>}{r?.metadata&&<small>用量：{r.metadata.usage?.total_tokens??'未知'} tokens</small>}</div>;})}</section>)}</details>)}
+  {value.state==='Evaluating'&&current?.state==='Completed'&&current.context_current!==false&&<><p>请按预先确定的要求审阅实际原稿。可以记录无收益或退化；生成成功不代表学习通过。</p>{value.criteria.map((criterion,i)=><label className="check" key={i}><CheckField checked={checks[i]??false} onChange={e=>setChecks(old=>old.map((v,j)=>i===j?e.target.checked:v))}/>{criterion}</label>)}<label className="check"><CheckField checked={improved} onChange={e=>setImproved(e.target.checked)}/>新情境中有实际改善</label><label className="check"><CheckField checked={retained} onChange={e=>setRetained(e.target.checked)}/>旧能力与无关情境未见退化</label><label>差异、失败与代价<textarea id="interaction-comparison-note" maxLength={2000} value={note} onChange={e=>setNote(e.target.value)}/></label><button id="interaction-comparison-record" disabled={disabled||busy||!note.trim()} onClick={()=>void record()}>保存评价（可以不通过）</button></>}
+  {error&&<p role="alert" className="error">{error}</p>}
+ </section>;
+}

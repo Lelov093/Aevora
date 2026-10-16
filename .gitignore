@@ -3,6 +3,8 @@
 .data/
 .logs/
 artifacts/
+output/
+.playwright-cli/
 docs/
 tests/
 AGENTS.md

@@ -8,7 +8,7 @@ from .errors import DomainError
 from .identity import now
 from .memory_governance import cached, erase_cached
 from .recall import current, active
-from . import task_plan, task_report, task_text
+from . import task_plan, task_report, task_text, general_actions
 
 MIGRATION = (
     "ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'report'",
@@ -37,18 +37,21 @@ class PlannedRepository:
             if a:r['action']['receipt']=json.loads(a['receipt']) if a['receipt'] else None
             rows.append(r)
         return rows
+    def resolved(self,step):
+        return step['state']=='Completed' or general_actions.review_rejected(step) or (step['state']=='Failed' and step['definition']['op']=='decide'
+            and step['result'].get('status')=='Rejected' and step['result'].get('executed') is False)
     def current_step(self,db,rid):
-        return next((s for s in self.steps(db,rid) if s['state']!='Completed'),None)
+        return next((s for s in self.steps(db,rid) if not self.resolved(s)),None)
     def state(self,db,row,state,error=None):
         db.execute('UPDATE tasks SET state=?,revision=revision+1,updated_at=? WHERE task_id=?',(state,now(),row['task_id']))
         db.execute('UPDATE task_runs SET state=?,error=?,completed_at=? WHERE run_id=?',
-                   (state,error,None if state in ('Planning','Running','Generating','Searching','ReadingWeb','AwaitingSources','AwaitingRedirectApproval','AwaitingPlanApproval','AwaitingApproval','Executing') else now(),row['current_run_id']))
+                   (state,error,None if state in ('Planning','Running','Generating','Searching','ReadingWeb','AwaitingSources','AwaitingRedirectApproval','AwaitingPlanApproval','AwaitingApproval','AwaitingInput','Executing') else now(),row['current_run_id']))
         self.store.memory.event(db,'Task'+state,row['agent_id'],{'task_id':row['task_id'],'run_id':row['current_run_id'],'error':error},actor='task_runtime')
     def install(self,db,rid,plan,prefix=()):
         for i,d in enumerate(plan['steps']):
             old=prefix[i] if i<len(prefix) else None
             db.execute('INSERT INTO task_steps(step_id,run_id,position,definition,state,result,context,metadata,raw_output,action_id,origin_step_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-                (str(uuid4()),rid,i,json.dumps(d),'Completed' if old else 'Pending',json.dumps(old['result']) if old else '{}',
+                (str(uuid4()),rid,i,json.dumps(d),old['state'] if old else 'Pending',json.dumps(old['result']) if old else '{}',
                  json.dumps(old['context']) if old else '{}',json.dumps(old['metadata']) if old else '{}',old['raw_output'] if old else '',old['action_id'] if old else None,old['step_id'] if old else None))
     def next_run(self,db,row,plan,approved,prefix):
         rid=str(uuid4())
@@ -81,8 +84,10 @@ class PlannedRepository:
                 self.store.goals.bind_task_context(db,aid,tid,goal_context)
             else:
                 row=self.target(db,aid,tid)
-                if row['kind'] not in ('plan','network'):raise DomainError('Forbidden','This command requires a planned task')
+                if row['kind'] not in ('plan','network','agent'):raise DomainError('Forbidden','This command requires a planned task')
                 if row['revision']!=c['expected_revision']:raise DomainError('RevisionConflict','Task changed; review again')
+                if row['kind']=='agent' and kind in ('ApproveTaskPlan','EditTaskPlan'):
+                    raise DomainError('Forbidden','This work reviews each effect, not a fixed upfront plan')
                 state=row['state'];rid=row['current_run_id'];step=self.current_step(db,rid)
                 run=db.execute('SELECT * FROM task_runs WHERE run_id=?',(rid,)).fetchone()
                 refs=json.loads(run['context'])
@@ -93,6 +98,13 @@ class PlannedRepository:
                     if state not in ('Executing','NeedsAttention','Completed'):self.state(db,row,'Revoked')
                     else:db.execute('UPDATE tasks SET revision=revision+1 WHERE task_id=?',(tid,))
                 elif kind in ('PauseTask','CancelTask','RejectTask'):
+                    if state == 'Executing' and step and step['definition']['op'] == 'run_command' and kind != 'RejectTask':
+                        refs['stop_requested'] = 'Paused' if kind == 'PauseTask' else 'Cancelled'
+                        db.execute('UPDATE task_runs SET context=? WHERE run_id=?', (json.dumps(refs), rid))
+                        db.execute('UPDATE tasks SET revision=revision+1 WHERE task_id=?', (tid,))
+                        response = {'command_id':c['command_id'],'status':'persisted','data':self.store.tasks.detail(db,aid,tid)}
+                        db.execute('INSERT INTO command_results VALUES (?,?,?)',(c['command_id'],serialized,json.dumps(response)))
+                        return response
                     if state in ('Executing','NeedsAttention','Completed'):raise DomainError('Forbidden','Resolve the write outcome first')
                     if kind=='RejectTask' and state not in ('AwaitingApproval','AwaitingPlanApproval'):raise DomainError('Forbidden','Nothing awaits review')
                     self.state(db,row,{'PauseTask':'Paused','CancelTask':'Cancelled','RejectTask':'Rejected'}[kind])
@@ -134,22 +146,52 @@ class PlannedRepository:
                         db.execute('UPDATE task_runs SET plan_approved=1 WHERE run_id=?',(rid,));self.state(db,row,'Running')
                     elif kind=='EditTaskBody':
                         if state!='AwaitingApproval' or not step or not p['body'].strip() or len(p['body'])>32768:raise DomainError('Forbidden','Only a complete pending body can be edited')
+                        from . import document_actions, general_actions
+                        if step['definition']['op'] in general_actions.WRITES:
+                            try:
+                                proposal = json.loads(p['body'])
+                            except (ValueError, TypeError):
+                                raise DomainError('InvalidToolAction', 'Edit the complete tool action JSON')
+                            proposal.pop('id', None)
+                            value = general_actions.parse(proposal, json.loads(row['agent_limits']).get('tools', {}), self.steps(db, rid))
+                            value['id'] = step['definition']['id']
+                            db.execute("UPDATE step_actions SET state='Superseded' WHERE action_id=?", (step['action_id'],))
+                            db.execute("UPDATE task_steps SET definition=?,state='Pending',action_id=NULL,result='{}' WHERE step_id=?", (json.dumps(value), step['step_id']))
+                            step_context = dict(step['context'], proposal_editor='user')
+                            db.execute('UPDATE task_steps SET context=? WHERE step_id=?', (json.dumps(step_context), step['step_id']))
+                            self.state(db, row, 'Running')
+                            response = {'command_id': c['command_id'], 'status': 'persisted', 'data': self.store.tasks.detail(db, aid, tid)}
+                            db.execute('INSERT INTO command_results VALUES (?,?,?)', (c['command_id'], serialized, json.dumps(response)))
+                            return response
+                        document_write = step['definition']['op'] in document_actions.WRITES
+                        if document_write:
+                            try: changes=json.loads(p['body'])
+                            except (ValueError, TypeError): raise DomainError('InvalidDocumentAction','Edit a complete typed change list')
+                            document=document_actions.resource(json.loads(row['agent_limits']).get('documents',[]),step['definition']['resource'])
+                            document_actions.patch(changes,document)
+                            definition=step['definition'] | {'changes':changes}
+                            db.execute("UPDATE task_steps SET definition=?,state='Pending',result='{}' WHERE step_id=?",(json.dumps(definition),step['step_id']))
                         db.execute("UPDATE step_actions SET state='Superseded' WHERE action_id=?",(step['action_id'],))
                         action=str(uuid4());db.execute("INSERT INTO step_actions VALUES (?,?,?,'AwaitingApproval',NULL,?,'user')",(action,step['step_id'],p['body'],now()))
-                        db.execute('UPDATE task_steps SET action_id=? WHERE step_id=?',(action,step['step_id']));self.state(db,row,'AwaitingApproval')
+                        db.execute('UPDATE task_steps SET action_id=? WHERE step_id=?',(action,step['step_id']));self.state(db,row,'Running' if document_write else 'AwaitingApproval')
                     elif kind=='ApproveTask':
                         if state!='AwaitingApproval' or not step:raise DomainError('Forbidden','No current authorized body awaits approval')
                         if not set(refs.get('memory_revision_ids',[])) <= {m['revision_id'] for m in active(db,aid)}:raise DomainError('ContextStale','Memory validity changed')
+                        step_context = dict(step['context'], approval={'action_id': step['action_id'],
+                            'mode': 'PreauthorizedScope' if step['result'].get('auto_execute') is True else 'ExplicitAction'})
+                        db.execute('UPDATE task_steps SET context=? WHERE step_id=?', (json.dumps(step_context), step['step_id']))
                         db.execute("UPDATE task_steps SET state='Executing' WHERE step_id=?",(step['step_id'],))
                         db.execute("UPDATE step_actions SET state='Executing' WHERE action_id=?",(step['action_id'],));self.state(db,row,'Executing')
                     else:raise DomainError('ValidationError','Unknown planned task command')
             data=self.store.tasks.detail(db,aid,tid)
             response={'command_id':c['command_id'],'status':'persisted','data':data}
             db.execute('INSERT INTO command_results VALUES (?,?,?)',(c['command_id'],serialized,json.dumps(response)))
+        if kind=='ApproveTask':self.store.probe_point('action.intent',{'task_id':tid,'action_id':data['current_step']['action_id']})
         return response
     def receipt(self,v):
         receipt=v['receipt'];aid,tid=v['agent_id'],v['task_id']
         if receipt.get('outcome') not in ('Success','Unknown','NotExecuted'):raise DomainError('ValidationError','Invalid native outcome')
+        self.store.probe_point('action.before_receipt',v)
         with self.store.transaction() as db:
             row=self.target(db,aid,tid);step=self.current_step(db,row['current_run_id'])
             if row['state'] not in ('Executing','NeedsAttention') or not step or step['action_id']!=v['action_id']:raise DomainError('Forbidden','No unresolved approved step')
@@ -157,13 +199,24 @@ class PlannedRepository:
             db.execute('UPDATE task_steps SET state=?,error=? WHERE step_id=?',(state,receipt.get('error'),step['step_id']))
             db.execute('UPDATE step_actions SET state=?,receipt=? WHERE action_id=?',(state,json.dumps(receipt),v['action_id']))
             self.store.memory.event(db,'TaskStepReceipt',aid,{'task_id':tid,'step_id':step['step_id'],'outcome':receipt['outcome']},actor='native_host')
+            if row['kind']=='agent':
+                action=db.execute('SELECT editor FROM step_actions WHERE action_id=?',(v['action_id'],)).fetchone()
+                db.execute('UPDATE task_steps SET result=? WHERE step_id=?',(json.dumps({'receipt':{k:receipt[k] for k in ('outcome','bytes_written','error','verification','changes','version','products','status','exit_code','stdout','stderr','truncated','elapsed_ms') if k in receipt},'editor':action['editor'],'status':receipt.get('status', 'Failed' if receipt.get('error') else 'Success')}),step['step_id']))
+                context=json.loads(db.execute('SELECT context FROM task_runs WHERE run_id=?',(row['current_run_id'],)).fetchone()[0])
+                context['active_ms']=context.get('active_ms',0)+int(receipt.get('elapsed_ms',0))
+                db.execute('UPDATE task_runs SET context=? WHERE run_id=?',(json.dumps(context),row['current_run_id']))
+                if state=='NotExecuted':
+                    db.execute("UPDATE task_steps SET state='Completed' WHERE step_id=?",(step['step_id'],))
+                    state='Completed'  # The failed effect is now an observation; its action/receipt remains NotExecuted.
             task_state=state
             if state=='Completed':
-                task_state='Completed' if not self.current_step(db,row['current_run_id']) else 'Running' if row['permission'] else 'Revoked'
+                task_state=('Running' if row['permission'] else 'Revoked') if row['kind']=='agent' else 'Completed' if not self.current_step(db,row['current_run_id']) else 'Running' if row['permission'] else 'Revoked'
+            if row['kind']=='agent' and state=='Completed' and context.get('stop_requested'):
+                task_state=context['stop_requested']
             self.state(db,row,task_state,receipt.get('error'))
             return self.store.tasks.detail(db,aid,tid)
     def recover(self,db):
-        for row in db.execute("SELECT * FROM tasks WHERE kind IN ('plan','network') AND state IN ('Created','Planning','Running','Generating','Searching','ReadingWeb','Executing')").fetchall():
+        for row in db.execute("SELECT * FROM tasks WHERE kind IN ('plan','network','agent') AND state IN ('Created','Planning','Running','Generating','Searching','ReadingWeb','Executing')").fetchall():
             step=self.current_step(db,row['current_run_id'])
             state='NeedsAttention' if row['state']=='Executing' else 'Failed'
             if step:
@@ -172,15 +225,18 @@ class PlannedRepository:
             self.state(db,row,state,'RuntimeInterrupted')
     def invalidate(self,db,aid,ids,erase):
         affected=set()
-        for r in db.execute("SELECT r.* FROM task_runs r JOIN tasks t ON t.task_id=r.task_id WHERE t.agent_id=? AND t.kind IN ('plan','network')",(aid,)).fetchall():
+        for r in db.execute("SELECT r.* FROM task_runs r JOIN tasks t ON t.task_id=r.task_id WHERE t.agent_id=? AND t.kind IN ('plan','network','agent')",(aid,)).fetchall():
             ctx=json.loads(r['context'])
             if not set(ctx.get('memory_revision_ids',[])) & set(ids):continue
             ctx.update(context_stale=True,context_erased=bool(erase));db.execute('UPDATE task_runs SET context=? WHERE run_id=?',(json.dumps(ctx),r['run_id']))
             affected.update((r['run_id'],r['task_id']))
             if erase:
-                db.execute("UPDATE task_runs SET raw_output='',plan=NULL WHERE run_id=?",(r['run_id'],))
+                db.execute("UPDATE task_runs SET raw_output='',plan=NULL,reply=NULL WHERE run_id=?",(r['run_id'],))
+                task_kind=db.execute('SELECT kind FROM tasks WHERE task_id=?',(r['task_id'],)).fetchone()['kind']
                 for step in self.steps(db,r['run_id']):
-                    d=step['definition'];d.pop('instruction',None)
+                    d=step['definition'];d.pop('instruction',None);d.pop('changes',None)
+                    if task_kind=='agent':
+                        for key in ('reason','question','query','script','args','body','patch','items','path','target','outputs'):d.pop(key,None)
                     db.execute("UPDATE task_steps SET definition=?,result='{}',raw_output='' WHERE step_id=?",(json.dumps(d),step['step_id']))
                     for a in db.execute('SELECT action_id FROM step_actions WHERE step_id=?',(step['step_id'],)):
                         affected.add(a[0]);db.execute("UPDATE step_actions SET body='' WHERE action_id=?",(a[0],))
@@ -213,7 +269,7 @@ class PlannedRuntime:
     def pump(self,aid,tid):
         with self.store.transaction() as db:
             row=self.store.tasks.target(db,aid,tid);repo=self.store.tasks.planned;rid=row['current_run_id']
-            if row['kind'] not in ('plan','network') or row['state']!='Running' or not row['permission'] or rid in self.tasks:return
+            if row['kind'] not in ('plan','network','agent') or row['state']!='Running' or not row['permission'] or rid in self.tasks:return
             s=repo.current_step(db,rid)
             if not s:repo.state(db,row,'Completed');return
             if s['definition']['op']=='read':return

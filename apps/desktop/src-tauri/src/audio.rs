@@ -22,6 +22,7 @@ pub fn capture(
     recording: Arc<AtomicBool>,
     buffer: Arc<Mutex<Buffer>>,
 ) -> mpsc::Receiver<Result<u32, String>> {
+
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         let result = (|| -> Result<(), String> {

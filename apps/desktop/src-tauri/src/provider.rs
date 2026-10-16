@@ -231,6 +231,7 @@ pub fn public(config: &Value) -> Value {
 }
 impl ProviderVault {
     pub fn load(root: &Path, data: &Path) -> Self {
+
         let path = data.join("provider.dpapi");
         let result = if path.exists() {
             fs::read(&path)
@@ -259,7 +260,10 @@ impl ProviderVault {
             }
         };
         match result {
-            Ok(value) => Self { value, error: None },
+            Ok(value) => {
+
+                Self { value, error: None }
+            },
             Err(error) => Self {
                 value: json!({"config":null,"results":{}}),
                 error: Some(error),

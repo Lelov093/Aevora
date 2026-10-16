@@ -50,6 +50,38 @@ class ProactivityRuntime:
                 return True
         return False
 
+    def execution_notice(self, db, aid, gid, settings):
+        """Deliver native work facts under Notify policy, without a model request."""
+        repo = self.store.proactivity
+        try:
+            context = repo.execution_context(db, aid, gid)
+        except DomainError:
+            return False
+        if not context:
+            return False
+        if not settings['notify'] or repo.followup_policy(db,aid,gid)['silenced'] or self.blocked(db,aid,settings):
+            return True
+        signature = repo.signature(context)
+        previous = db.execute('SELECT * FROM proactive_checks WHERE agent_id=? AND goal_id=? AND signature=?', (aid,gid,signature)).fetchone()
+        if previous and (previous['state'] != 'Snoozed' or not previous['due_at'] or previous['due_at'] > repo.clock().isoformat()):
+            return True
+        day = self.local().date().isoformat()
+        db.execute('INSERT OR IGNORE INTO proactive_budgets(agent_id,local_date) VALUES (?,?)',(aid,day))
+        if db.execute('SELECT notifications FROM proactive_budgets WHERE agent_id=? AND local_date=?',(aid,day)).fetchone()[0] >= settings['max_daily_notifications']:
+            return True
+        cid = previous['check_id'] if previous else str(uuid4())
+        stamp = repo.clock().isoformat()
+        message = context['data']['title']+'：'+context['data']['label']+'。请查看原工作；目标达成仍由你确认。'
+        metadata = json.dumps({'source':'execution','execution_id':context['references']['execution_id'],'model_request':False})
+        if previous:
+            db.execute("UPDATE proactive_checks SET state='Notified',context=?,message=?,metadata=?,due_at=NULL,notified_at=? WHERE check_id=?",(json.dumps(context),message,metadata,stamp,cid))
+        else:
+            db.execute("INSERT INTO proactive_checks(check_id,agent_id,goal_id,signature,settings_revision,state,context,decision,reason,message,next_step,metadata,created_at,notified_at) VALUES (?,?,?,?,?,'Notified',?,'Notify','执行状态更新，未调用模型',?,'打开原工作查看实际状态',?,?,?)",
+                       (cid,aid,gid,signature,settings['revision'],json.dumps(context),message,metadata,stamp,stamp))
+        db.execute('UPDATE proactive_budgets SET notifications=notifications+1 WHERE agent_id=? AND local_date=?',(aid,day))
+        self.store.memory.event(db,'ProactiveNotified',aid,{'check_id':cid,'goal_id':gid,'execution_id':context['references']['execution_id']},actor='scheduler')
+        return True
+
     def tick(self):
         repo = self.store.proactivity
         with self.store.transaction() as db:
@@ -60,6 +92,10 @@ class ProactivityRuntime:
                 if aid in self.tasks:
                     continue
                 for gid in json.loads(settings['goal_ids']):
+                    if self.execution_notice(db, aid, gid, settings):
+                        continue
+                    if db.execute("SELECT 1 FROM goal_executions WHERE goal_id=? AND state NOT IN ('Completed','Revoked')", (gid,)).fetchone():
+                        continue  # Execution owns its pending decisions; don't spend a second model call proposing manual continuation.
                     if repo.followup_policy(db, aid, gid)['silenced']:
                         continue
                     try:

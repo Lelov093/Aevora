@@ -32,14 +32,17 @@ MAX_BODY = 16_384
 ROOT = Path(__file__).resolve().parents[3]
 VALIDATOR = Draft202012Validator(json.loads((ROOT / "packages/protocol/command.schema.json").read_text()))
 
-def create_app(store, token, instance_id, provider=None):
+def create_app(store, token, instance_id, provider=None, memory_evidence=None, *, voice_test_unlimited=False):
     recall = RecallRuntime(store, (provider or {}).get("embedding"), (provider or {}).get("selection"))
+    recall.testing_unlimited = voice_test_unlimited is True
     chat = ChatRuntime(store, provider, recall)
-    memory = ExtractionRuntime(store, (provider or {}).get("extraction"))
+    memory = ExtractionRuntime(store, (provider or {}).get("extraction"), memory_evidence)
     agency = TaskRuntime(store, chat.gateway, recall)
     evolution = EvolutionRuntime(store, chat.gateway)
     proactive = ProactivityRuntime(store, chat.gateway, lambda: bool(chat.tasks or agency.active or evolution.tasks))
     scheduler = SchedulerRuntime(store.scheduler, proactive)
+    from .execution_runtime import ExecutionRuntime
+    executions = ExecutionRuntime(store, agency, chat.gateway)
     def snapshot():
         return chat.snapshot() | {"extraction": memory.public(), "embedding": recall.public(), "scheduler_error": scheduler.error}
 
@@ -49,11 +52,13 @@ def create_app(store, token, instance_id, provider=None):
         store.tasks.recover()
         store.evolution.recover()
         store.proactivity.recover()
+        store.executions.recover()
         await memory.start()
         await recall.start()
         await scheduler.start()
         yield
         await scheduler.close()
+        await executions.close()
         await proactive.pause()
         await evolution.pause()
         await recall.close()
@@ -82,8 +87,10 @@ def create_app(store, token, instance_id, provider=None):
         except Exception:
             return error("ValidationError", "Invalid command or protocol version", 400)
         try:
-            if value['type'] == 'CreateMethodProposal':
+            if value['type'] in ('CreateMethodProposal', 'CreateConversationMethodProposal'):
                 result = evolution.command(value)
+            elif value['type'] == 'RunInteractionComparison':
+                result = evolution.comparisons.command(value)
             elif value['type'] == 'ConfigureProactivity':
                 if value['payload']['think'] and value['payload']['provider'] != binding(chat.gateway.ready()):
                     raise DomainError('Forbidden', 'Approve Think for the current Provider')
@@ -109,7 +116,7 @@ def create_app(store, token, instance_id, provider=None):
                 if value["type"] == "SetGoalFollowupPolicy":
                     await proactive.refresh_policy(value["agent_id"])
                     scheduler.wake()
-                if value["type"] in ("EditMemory", "ForgetMemory", "DeleteMemory", "DeleteConversation", "ReviewMemory"):
+                if value["type"] in ("EditMemory", "RememberInteraction", "ForgetMemory", "DeleteMemory", "DeleteConversation", "ReviewMemory"):
                     chat.invalidate()
                     agency.invalidate()
                 if value["type"] == "Pause":
@@ -122,13 +129,16 @@ def create_app(store, token, instance_id, provider=None):
                 elif value["type"] in ("CreateSchedule", "CreateCommitment", "EditSchedule"):
                     scheduler.wake()
             if value['type'] in ('EditGoal', 'ChangeGoalState', 'DeleteGoal', 'LinkGoalWork', 'UnlinkGoalWork',
-                                 'CreateTask', 'CreatePlannedTask', 'CreateNetworkTask', 'CreateSchedule', 'CreateCommitment',
+                                 'CreateTask', 'CreatePlannedTask', 'CreateNetworkTask', 'CreateAgentTask', 'AnswerAgentTask', 'ReviseAgentAction', 'CreateSchedule', 'CreateCommitment',
                                  'SaveTaskFeedback', 'DeleteTaskFeedback'):
                 chat.invalidate()
-            if value['type'] in ('EditMethodCandidate', 'AdoptMethod', 'DisableMethod', 'EnableMethod', 'RollbackMethod', 'DeleteMethod', 'RejectMethod', 'SaveTaskFeedback', 'DeleteTaskFeedback'):
+            if value['type'] in ('EditMethodCandidate', 'AdoptMethod', 'DisableMethod', 'EnableMethod', 'RollbackMethod', 'DeleteMethod', 'RejectMethod', 'SaveTaskFeedback', 'DeleteTaskFeedback', 'SaveInteractionFeedback', 'DeleteInteractionFeedback', 'DeleteConversation', 'EditPersona', 'RememberInteraction', 'EditMemory', 'ForgetMemory', 'DeleteMemory'):
                 chat.invalidate()
                 agency.invalidate()
                 await evolution.invalidate()
+            store.executions.child_control(value)
+            executions.invalidate()
+            agency.invalidate()
             result["protocol_version"] = PROTOCOL_VERSION
             result["runtime_instance_id"] = instance_id
             return JSONResponse(result)
@@ -204,7 +214,7 @@ def create_app(store, token, instance_id, provider=None):
                 with store.transaction() as db:
                     for row in db.execute("SELECT t.* FROM tasks t WHERE kind='report' AND state IN ('Created','Generating','AwaitingApproval')").fetchall():
                         store.tasks.transition(db, row, "Failed", "ContextStale")
-                    for row in db.execute("SELECT t.* FROM tasks t WHERE kind IN ('plan','network') AND state IN ('Created','Planning','Running','Generating','Searching','ReadingWeb','AwaitingSources','AwaitingRedirectApproval','AwaitingPlanApproval','AwaitingApproval')").fetchall():
+                    for row in db.execute("SELECT t.* FROM tasks t WHERE kind IN ('plan','network','agent') AND state IN ('Created','Planning','Running','Generating','Searching','ReadingWeb','AwaitingSources','AwaitingRedirectApproval','AwaitingPlanApproval','AwaitingApproval')").fetchall():
                         refs=json.loads(db.execute('SELECT context FROM task_runs WHERE run_id=?',(row['current_run_id'],)).fetchone()[0])|{'context_stale':True}
                         db.execute('UPDATE task_runs SET context=? WHERE run_id=?',(json.dumps(refs),row['current_run_id']))
                         store.tasks.planned.state(db,row,'Failed','ContextStale')
@@ -220,6 +230,7 @@ def create_app(store, token, instance_id, provider=None):
         if not authorized(request.headers):
             return error("Forbidden", "Native Host authentication required", 403)
         await scheduler.close()
+        await executions.close()
         await proactive.pause()
         await evolution.pause()
         await memory.close()
@@ -237,20 +248,33 @@ def create_app(store, token, instance_id, provider=None):
             async for chunk in request.stream():
                 body.extend(chunk)
                 # UTF-8/JSON expansion of the configured bounded input plus receipts.
-                if len(body) > max(2 * 1024 * 1024, chat.gateway.config.get("max_input_tokens", 4096) * 6 + 16384):
+                if len(body) > max((8 if request.url.path == "/task-input" else 2) * 1024 * 1024, chat.gateway.config.get("max_input_tokens", 4096) * 6 + 16384):
                     return error("BudgetExceeded", "Selected file input exceeds supported capacity", 413)
             value = json.loads(body)
             if request.url.path == "/task-input":
                 data = agency.fail_input(value) if "error" in value and not value.get("phase") else agency.input(value)
             else:
                 data = agency.receipt(value)
+            chat.invalidate()
             return JSONResponse({"status": "persisted", "data": data, "protocol_version": 1, "runtime_instance_id": instance_id})
         except DomainError as exc:
             return error(exc.code, exc.message, 400)
         except Exception:
             return error("PersistenceFailed", "Task receipt or input could not be saved", 500)
 
+    async def execution_native(request: Request):
+        if not authorized(request.headers):
+            return error('Forbidden', 'Native Host authentication required', 403)
+        try:
+            data = executions.native(await request.json())
+            executions.invalidate()
+            agency.invalidate()
+            return JSONResponse({'data': data, 'status': 'persisted', 'protocol_version': 1, 'runtime_instance_id': instance_id})
+        except DomainError as exc:
+            return error(exc.code, exc.message, 400)
+
     app = Starlette(lifespan=lifespan, routes=[Route("/command", command, methods=["POST"]),
+                             Route('/execution-native', execution_native, methods=['POST']),
                              Route("/task-input", task_native, methods=["POST"]),
                              Route("/task-receipt", task_native, methods=["POST"]),
                              Route("/provider", configure, methods=["POST"]),
@@ -263,6 +287,7 @@ def create_app(store, token, instance_id, provider=None):
     app.state.scheduler = scheduler
     app.state.evolution = evolution
     app.state.proactive = proactive
+    app.state.executions = executions
     return app
 
 def main():

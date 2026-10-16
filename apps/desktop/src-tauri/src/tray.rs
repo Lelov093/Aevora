@@ -82,7 +82,7 @@ impl Controls {
         let _ = self.resume.set_enabled(false);
     }
 
-    // Native menu actions share this operation.
+    // The native menu and debug-only integration probe use this same operation.
     // Explicit Pause/Resume avoids inverting a state changed by another window.
     pub fn set_paused(&self, paused: bool) -> Result<(), String> {
         let _guard = self.operation.lock().unwrap();

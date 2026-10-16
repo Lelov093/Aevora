@@ -1,19 +1,35 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-mod audio;
+
 mod job;
-mod network;
-mod planned_host;
-mod presence;
-mod provider;
-mod runtime;
+mod audio;
+
 mod speech;
 mod speech_config;
+mod presence;
+mod network;
+
+mod planned_host;
+
+mod provider;
+
+mod runtime;
 mod tools;
+mod agent_host;
+mod execution_host;
+mod general_host;
+mod command_tools;
+mod office;
+mod document_host;
+mod document_resources;
 mod tray;
+
 use runtime::Runtime;
 use serde_json::Value;
-use std::{path::PathBuf, sync::Arc};
-use tauri::{Emitter, Manager};
+use std::{
+    path::PathBuf,
+    sync::{atomic::Ordering, Arc},
+};
+use tauri::{Manager,Emitter};
 
 #[tauri::command]
 async fn runtime_command(
@@ -25,6 +41,8 @@ async fn runtime_command(
         command["type"].as_str(),
         Some(
             "GetSnapshot"
+                | "CreateGoalExecution" | "GetGoalExecution" | "EditGoalExecutionPlan"
+                | "ApproveGoalExecution" | "PauseGoalExecution" | "ResumeGoalExecution" | "RevokeGoalExecution" | "RenewGoalExecution"
                 | "Pause"
                 | "Resume"
                 | "CreateAgent"
@@ -57,6 +75,9 @@ async fn runtime_command(
                 | "RetryEmbeddingJob"
                 | "SearchMemories"
                 | "CreateTask"
+                | "CreateAgentTask"
+                | "AnswerAgentTask"
+                | "ReviseAgentAction"
                 | "CreatePlannedTask"
                 | "ApproveTaskPlan"
                 | "EditTaskPlan"
@@ -86,12 +107,21 @@ async fn runtime_command(
                 | "GetGoalContext"
                 | "GetGoalSource"
                 | "RejectWorkSuggestion"
-                | "PrepareFileWork"
+                 | "PrepareFileWork"
                 | "SaveTaskFeedback"
                 | "DeleteTaskFeedback"
                 | "ListMethods"
                 | "GetMethodExperience"
                 | "CreateMethodProposal"
+                | "CreateConversationMethodProposal"
+                | "SaveInteractionFeedback"
+                | "DeleteInteractionFeedback"
+                | "GetInteractionExperience"
+                | "GetInteractionMemory"
+                | "RememberInteraction"
+                | "RunInteractionComparison"
+                | "ListInteractionComparisons"
+                | "RecordInteractionMethodEvaluation"
                 | "EditMethodCandidate"
                 | "StartMethodEvaluation"
                 | "RecordMethodEvaluation"
@@ -121,6 +151,7 @@ async fn runtime_command(
                 | "RevokeTaskPermission"
                 | "ResolveTask"
                 | "PreviewTaskArtifact"
+                | "OpenTaskArtifact"
         )
     ) {
         return Err("ValidationError: command is unavailable".into());
@@ -141,115 +172,73 @@ async fn choose_task_resource(kind: String) -> Result<Value, String> {
         .map_err(|e| e.to_string())?
 }
 #[tauri::command]
+async fn inspect_document_resource(runtime:tauri::State<'_,Arc<Runtime>>,resource:Value)->Result<Value,String> {
+    let r=runtime.inner().clone();
+    tauri::async_runtime::spawn_blocking(move||r.inspect_document_resource(&resource)).await.map_err(|e|e.to_string())?
+}
+#[tauri::command]
+fn frontend_ready(runtime: tauri::State<'_, Arc<Runtime>>) {
+    runtime.frontend_count.fetch_add(1, Ordering::SeqCst);
+}
+#[tauri::command]
+fn frontend_snapshot(runtime: tauri::State<'_, Arc<Runtime>>, revision: usize) {
+    runtime.frontend_revision.store(revision, Ordering::SeqCst);
+}
+#[tauri::command]
+fn frontend_identity(
+    window: tauri::WebviewWindow,
+    runtime: tauri::State<'_, Arc<Runtime>>,
+    view: Value,
+) {
+    let label = window.label().to_string();
+    runtime.identity_views.lock().unwrap().insert(label, view);
+}
+#[tauri::command]
 async fn hide_main(app: tauri::AppHandle) {
     app.state::<Arc<Runtime>>().speech.cancel(Some("main"));
-    let _ = app.emit("speech-surface-hidden", "main");
+    let _=app.emit("speech-surface-hidden","main");
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
     }
     presence::sync_later(app.clone());
 }
 #[tauri::command]
-async fn speech_command(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-    runtime: tauri::State<'_, Arc<Runtime>>,
-    payload: Value,
-) -> Result<Value, String> {
-    let r = runtime.inner().clone();
-    let owner = window.label().to_string();
-    if !matches!(owner.as_str(), "main" | "presence") {
-        return Err("此窗口不能访问语音控制".into());
-    }
-    tauri::async_runtime::spawn_blocking(move || {
-        let speech = r.speech.clone();
-        let action = payload["action"].as_str().ok_or("语音操作缺失")?;
+async fn speech_command(app:tauri::AppHandle,window:tauri::WebviewWindow,runtime:tauri::State<'_,Arc<Runtime>>,payload:Value)->Result<Value,String>{
+    let r=runtime.inner().clone();let owner=window.label().to_string();
+    if !matches!(owner.as_str(),"main"|"presence"){return Err("此窗口不能访问语音控制".into());}
+    tauri::async_runtime::spawn_blocking(move||{
+        let speech=r.speech.clone();let action=payload["action"].as_str().ok_or("语音操作缺失")?;
         match action {
-            "snapshot" => Ok(speech.public()),
-            "configure" => {
-                speech.cancel(None);
-                speech.vault.lock().unwrap().configure(&payload["config"])?;
-                let _ = app.emit("speech-settings", speech.public());
-                Ok(speech.public())
-            }
-            "import_env" => {
-                speech.cancel(None);
-                speech.vault.lock().unwrap().import(&r.root)?;
-                let _ = app.emit("speech-settings", speech.public());
-                Ok(speech.public())
-            }
-            "stop" => {
-                speech.cancel(None);
-                let _ = app.emit("speech-event", speech.public()["activity"].clone());
-                Ok(speech.public())
-            }
-            "cancel_owned" => {
-                speech.cancel(Some(&owner));
-                Ok(speech.public())
-            }
-            "end_capture" => {
-                speech.end_capture(
-                    &owner,
-                    payload["operation_id"].as_str().ok_or("轮次标识缺失")?,
-                )?;
-                Ok(speech.public())
-            }
-            "begin_capture" | "speak" => {
-                let w = app.get_webview_window(&owner).ok_or("来源窗口已关闭")?;
-                if !w.is_visible().unwrap_or(false) || w.is_minimized().unwrap_or(true) {
-                    return Err("请在可见窗口开始语音。".into());
-                }
-                let aid = payload["agent_id"].as_str().ok_or("Agent缺失")?;
-                let cid = payload["conversation_id"].as_str().ok_or("会话缺失")?;
-                if action == "begin_capture" {
-                    speech.start_capture(app, r, &owner, aid, cid)
-                } else {
-                    speech.speak(app, r, &owner, aid, cid, &payload["source"])
-                }
-            }
-            _ => Err("不支持的语音操作".into()),
+            "snapshot"=>Ok(speech.public()),
+            "configure"=>{speech.cancel(None);speech.vault.lock().unwrap().configure(&payload["config"])?;let _=app.emit("speech-settings",speech.public());Ok(speech.public())},
+            "import_env"=>{speech.cancel(None);speech.vault.lock().unwrap().import(&r.root)?;let _=app.emit("speech-settings",speech.public());Ok(speech.public())},
+            "stop"=>{speech.cancel(None);let _=app.emit("speech-event",speech.public()["activity"].clone());Ok(speech.public())},
+            "cancel_owned"=>{speech.cancel(Some(&owner));Ok(speech.public())},
+            "end_capture"=>{speech.end_capture(&owner,payload["operation_id"].as_str().ok_or("轮次标识缺失")?)?;Ok(speech.public())},
+            "begin_capture"|"speak"=>{
+                let w=app.get_webview_window(&owner).ok_or("来源窗口已关闭")?;
+                if !w.is_visible().unwrap_or(false)||w.is_minimized().unwrap_or(true){return Err("请在可见窗口开始语音。".into());}
+                let aid=payload["agent_id"].as_str().ok_or("Agent缺失")?;let cid=payload["conversation_id"].as_str().ok_or("会话缺失")?;
+                if action=="begin_capture"{speech.start_capture(app,r,&owner,aid,cid)}else{speech.speak(app,r,&owner,aid,cid,&payload["source"])}
+            },_=>Err("不支持的语音操作".into())
         }
-    })
-    .await
-    .map_err(|_| "语音操作中断".to_string())?
+    }).await.map_err(|_|"语音操作中断".to_string())?
 }
 #[tauri::command]
-async fn presence_command(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-    payload: Value,
-) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let p = app.state::<Arc<presence::Presence>>();
-        match payload["action"].as_str() {
-            Some("snapshot") => Ok(p.public()),
-            Some("goal_context") if window.label() == "main" => {
-                p.set_context(&app, &payload["context"])
-            }
-            Some("configure") => p.configure(
-                &app,
-                payload["enabled"] == true,
-                payload["always_on_top"] == true,
-            ),
-            Some("expand") if window.label() == "presence" => {
-                p.expand(&app, payload["expanded"] == true)?;
-                Ok(p.public())
-            }
-            Some("drag") if window.label() == "presence" => {
-                window.start_dragging().map_err(|_| "窗口拖动不可用")?;
-                Ok(p.public())
-            }
-            Some("reset_position") => p.reset_position(&app),
-            Some("open_main") => {
-                show_main(&app).map_err(|_| "主窗口无法打开")?;
-                let _ = app.emit("presence-open", payload["context"].clone());
-                Ok(p.public())
-            }
-            _ => Err("Presence操作不可用".into()),
-        }
-    })
-    .await
-    .map_err(|_| "Presence操作中断".to_string())?
+async fn presence_command(app:tauri::AppHandle,window:tauri::WebviewWindow,payload:Value)->Result<Value,String>{
+    tauri::async_runtime::spawn_blocking(move||{
+    let p=app.state::<Arc<presence::Presence>>();
+    match payload["action"].as_str(){
+        Some("snapshot")=>Ok(p.public()),
+        Some("goal_context") if window.label()=="main"=>p.set_context(&app,&payload["context"]),
+        Some("configure")=>p.configure(&app,payload["enabled"]==true,payload["always_on_top"]==true),
+        Some("expand") if window.label()=="presence"=>{p.expand(&app,payload["expanded"]==true)?;Ok(p.public())},
+        Some("drag") if window.label()=="presence"=>{window.start_dragging().map_err(|_|"窗口拖动不可用")?;Ok(p.public())},
+        Some("reset_position")=>p.reset_position(&app),
+        Some("open_main")=>{show_main(&app).map_err(|_|"主窗口无法打开")?;let _=app.emit("presence-open",payload["context"].clone());Ok(p.public())},
+        _=>Err("Presence操作不可用".into())
+    }
+    }).await.map_err(|_|"Presence操作中断".to_string())?
 }
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
@@ -264,9 +253,7 @@ pub fn show_main(app: &tauri::AppHandle) -> tauri::Result<()> {
     window.show()?;
     window.unminimize()?;
     window.set_focus()?;
-    if let Some(p) = app.try_state::<Arc<presence::Presence>>() {
-        let _ = p.sync(app);
-    }
+    if let Some(p)=app.try_state::<Arc<presence::Presence>>(){let _=p.sync(app);}
     Ok(())
 }
 fn main() {
@@ -278,8 +265,10 @@ fn main() {
         .unwrap_or_else(|| root.join(".data"));
 
     let runtime = Runtime::new(root, data).expect("Cannot initialize native runtime");
+    let second = runtime.clone();
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+        .plugin(tauri_plugin_single_instance::init(move |app, _, _| {
+            second.second_instances.fetch_add(1, Ordering::SeqCst);
             let _ = show_main(app);
         }))
         .manage(runtime.clone())
@@ -287,13 +276,18 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             runtime_command,
             choose_task_resource,
+            inspect_document_resource,
             host_status,
+            frontend_ready,
+            frontend_snapshot,
+            frontend_identity,
             hide_main,
             speech_command,
             presence_command,
             quit_app
         ])
         .setup(move |app| {
+
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::TrayIconBuilder;
             let show = MenuItem::with_id(app, "show", "打开 Aevora", true, None::<&str>)?;
@@ -322,57 +316,28 @@ fn main() {
                 .on_menu_event(|app, event| tray::handle_menu(app, event.id.as_ref()))
                 .build(app)?;
             runtime.start(app.handle().clone());
+
             Ok(())
         })
         .on_window_event(|window, event| {
-            if window.label() == "presence"
-                && matches!(
-                    event,
-                    tauri::WindowEvent::Moved(_) | tauri::WindowEvent::ScaleFactorChanged { .. }
-                )
-            {
+            if window.label()=="presence" && matches!(event, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::ScaleFactorChanged { .. }) {
                 presence::remember_later(window.app_handle().clone());
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                window
-                    .app_handle()
-                    .state::<Arc<Runtime>>()
-                    .speech
-                    .cancel(Some(window.label()));
-                let _ = window
-                    .app_handle()
-                    .emit("speech-surface-hidden", window.label());
+                window.app_handle().state::<Arc<Runtime>>().speech.cancel(Some(window.label()));
+                let _=window.app_handle().emit("speech-surface-hidden",window.label());
                 let _ = window.hide();
-                if window.label() == "main" {
-                    presence::sync_later(window.app_handle().clone());
-                } else if window.label() == "presence" {
-                    let p = window.app_handle().state::<Arc<presence::Presence>>();
-                    let _ = p.configure(
-                        window.app_handle(),
-                        false,
-                        p.public()["always_on_top"] == true,
-                    );
-                }
+                if window.label()=="main"{presence::sync_later(window.app_handle().clone());}
+                else if window.label()=="presence"{let p=window.app_handle().state::<Arc<presence::Presence>>();let _=p.configure(window.app_handle(),false,p.public()["always_on_top"]==true);}
             }
-            if let tauri::WindowEvent::Focused(false) = event {
-                let r = window.app_handle().state::<Arc<Runtime>>();
-                let active = r.speech.active.lock().unwrap().clone();
-                if active.is_some_and(|o| o.owner == window.label() && o.kind == "asr") {
-                    r.speech.cancel(Some(window.label()));
-                }
+            if let tauri::WindowEvent::Focused(false)=event {
+                let r=window.app_handle().state::<Arc<Runtime>>();let active=r.speech.active.lock().unwrap().clone();
+                if active.is_some_and(|o|o.owner==window.label()&&o.kind=="asr"){r.speech.cancel(Some(window.label()));}
             }
-            if let tauri::WindowEvent::Resized(_) = event {
-                if window.label() == "main" {
-                    presence::sync_later(window.app_handle().clone());
-                    if window.is_minimized().unwrap_or(false) {
-                        window
-                            .app_handle()
-                            .state::<Arc<Runtime>>()
-                            .speech
-                            .cancel(Some("main"));
-                        let _ = window.app_handle().emit("speech-surface-hidden", "main");
-                    }
+            if let tauri::WindowEvent::Resized(_)=event {
+                if window.label()=="main"{presence::sync_later(window.app_handle().clone());
+                    if window.is_minimized().unwrap_or(false){window.app_handle().state::<Arc<Runtime>>().speech.cancel(Some("main"));let _=window.app_handle().emit("speech-surface-hidden","main");}
                 }
             }
         })
