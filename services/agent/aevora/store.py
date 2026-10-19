@@ -25,7 +25,9 @@ from .interaction_learning import MIGRATION as INTERACTION_MIGRATION, Interactio
 from .agent_tasks import MIGRATION as AGENT_MIGRATION
 from .executions import ExecutionRepository, MIGRATION as EXECUTION_MIGRATION, COMMANDS as EXECUTION_COMMANDS
 
-SCHEMA_VERSION = 21
+from .conversation_groups import ConversationGroups, MIGRATION as GROUP_MIGRATION, COMMANDS as GROUP_COMMANDS
+
+SCHEMA_VERSION = 23
 MIGRATIONS = {1: (
     "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, revision INTEGER NOT NULL)",
     "INSERT INTO settings VALUES ('runtime', 'Running', 0)",
@@ -65,7 +67,11 @@ MIGRATIONS = {1: (
     "CREATE TABLE goal_followup_policy(goal_id TEXT PRIMARY KEY REFERENCES goals(goal_id),agent_id TEXT NOT NULL REFERENCES agents(agent_id),revision INTEGER NOT NULL,silenced INTEGER NOT NULL,source_message_id TEXT REFERENCES messages(message_id),updated_at TEXT NOT NULL)",
 ), 18: INTERACTION_MIGRATION, 19: AGENT_MIGRATION, 20: (
     "ALTER TABLE memory_revisions ADD COLUMN interaction_context TEXT NOT NULL DEFAULT '{}'",
-), 21: EXECUTION_MIGRATION}
+), 21: EXECUTION_MIGRATION, 22: GROUP_MIGRATION, 23: (
+    "ALTER TABLE conversation_organization ADD COLUMN custom_title TEXT",
+    "ALTER TABLE proactive_settings ADD COLUMN calls_unlimited INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE proactive_settings ADD COLUMN notifications_unlimited INTEGER NOT NULL DEFAULT 0",
+)}
 
 class Store:
     def __init__(self, path: Path, input_timezone=INPUT_TIMEZONE, probe=None):
@@ -79,6 +85,7 @@ class Store:
             self.identity = IdentityRepository(db.execute(
                 "SELECT value FROM settings WHERE key='owner_user_id'").fetchone()[0])
         self.conversation = ConversationRepository(self)
+        self.conversation_groups = ConversationGroups(self)
         self.memory = MemoryRepository(self)
         self.governance = MemoryGovernance(self)
         self.tasks = TaskRepository(self)
@@ -251,6 +258,8 @@ class Store:
                 response = {"command_id": command["command_id"], "status": "persisted", "data": data}
                 db.execute("INSERT INTO command_results VALUES (?,?,?)", (command["command_id"], serialized, json.dumps(response)))
                 return response
+            if command["type"] in GROUP_COMMANDS:
+                return self.conversation_groups.command(db, command, serialized)
             if command["type"] in ("CreateAgent", "SelectAgent", "EditPersona"):
                 return self.identity_command(db, command, serialized)
             if command["type"] in ("CreateConversation", "SelectConversation", "SetConversationGoal"):

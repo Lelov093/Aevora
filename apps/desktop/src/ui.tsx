@@ -1,11 +1,12 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import {
-  AlignLeft, ArrowUp, Bell, Brain, BriefcaseBusiness, Check, ChevronDown, GripVertical,
+  AlignLeft, ThumbsUp, ThumbsDown, Copy, FileText, Folder, Layers, ArrowUp, Bell, PanelLeft, PanelRight, MoreHorizontal, Square, Brain, BriefcaseBusiness, Check, ChevronDown, GripVertical,
   LockKeyhole, Menu, MessageCircle, Mic, Orbit, Paperclip, Pause, Play, Plus,
   RotateCcw, Search, Settings, SlidersHorizontal, UserRound, Volume2, X, type LucideIcon
 } from "lucide-react";
 const icons: Record<string, LucideIcon> = {
-  menu: Menu, work: BriefcaseBusiness, plus: Plus, search: Search, chat: MessageCircle,
+  'thumb-up':ThumbsUp,'thumb-down':ThumbsDown,copy:Copy,file:FileText,folder:Folder,layers:Layers,
+  'panel-left':PanelLeft,'panel-right':PanelRight,more:MoreHorizontal,stop:Square,menu: Menu, work: BriefcaseBusiness, plus: Plus, search: Search, chat: MessageCircle,
   memory: Brain, settings: Settings, chevron: ChevronDown, close: X, send: ArrowUp,
   pause: Pause, play: Play, retry: RotateCcw, lock: LockKeyhole, mic: Mic,
   voice: Volume2, paperclip: Paperclip, check: Check, grip: GripVertical,

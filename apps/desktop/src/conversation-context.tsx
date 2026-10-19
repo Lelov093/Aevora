@@ -43,8 +43,8 @@ export function ConversationWorkPicker({agentId,cid,sequence,provider,disabled,r
   return()=>{active=false;};
  },[agentId,cid,sequence,provider.revision]);
  return <section className="goal-context" aria-label="当前对话工作资料"><h3>当前对话的工作进展</h3>{(value?.data.tasks.length||value?.data.executions?.length)?<>
-  <ConversationWorkRecords data={value!.data}/>
-  <label className="check"><CheckField id="conversation-work-consent" checked={confirmed} disabled={disabled} onChange={e=>{confirmation.current=e.target.checked;setConfirmed(e.target.checked);changed(e.target.checked?{...value!.references,allow_outbound:true}:null,true);}}/>允许向 {provider.model}（{provider.base_url}）发送按过程排列的任务报告、历史回执和对应反馈；需修订原稿仅供本机查看。资料或连接改变后重新确认。</label>
-  <p className="small muted">可保持普通交流。不额外读取或发送原始文件正文；报告可能包含任务中记录的名称或路径。历史保存不保证文件现在存在，也不代表内容通过或目标达成。带入这些资料的回复不会自动提取为 Memory。省略较早任务 {value!.data.omitted_tasks??0} 项、执行记录 {value!.data.omitted_executions??0} 项。</p>
+  <div className="work-context-summary"><strong>{value!.data.tasks.length} 项任务报告</strong><span>历史回执与对应反馈</span></div><details><summary>查看报告、来源与状态</summary><ConversationWorkRecords data={value!.data}/></details><div className="outbound-summary"><strong>发送到当前模型</strong><p>{provider.model||"未配置模型"}</p><small>{provider.base_url||"未配置目的地"}</small><p>范围：按过程排列的任务报告、历史回执及对应反馈；需修订原稿仅供本机查看。</p></div>
+  <label className="check"><CheckField id="conversation-work-consent" checked={confirmed} disabled={disabled} onChange={e=>{confirmation.current=e.target.checked;setConfirmed(e.target.checked);changed(e.target.checked?{...value!.references,allow_outbound:true}:null,true);}}/>允许向以上目的地发送这份资料。资料或连接改变后重新确认。</label>
+  <details><summary>资料范围与使用说明</summary><p className="small muted">可保持普通交流。不额外读取或发送原始文件正文；报告可能包含任务中记录的名称或路径。历史保存不保证文件现在存在，也不代表内容通过或目标达成。带入这些资料的回复不会自动提取为 Memory。省略较早任务 {value!.data.omitted_tasks??0} 项、执行记录 {value!.data.omitted_executions??0} 项。</p></details>
  </>:<p className="small muted">当前对话没有关联任务资料。</p>}{error&&<p className="error" role="alert">{error}</p>}</section>;
 }

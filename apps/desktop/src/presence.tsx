@@ -12,10 +12,15 @@ import {VoiceControls,ReadReply,speechAction} from './voice';
 import {Markdown} from './markdown';
 import {Icon} from './ui';
 import {OrbVisual} from './orb';
-type PresenceConfig={enabled:boolean;always_on_top:boolean;conversation_context?:{agent_id:string;conversation_id:string;goal_context:GoalApproval|null;work_context?:WorkApproval|null;pending:boolean}|null};
+export type PresenceConfig={enabled:boolean;always_on_top:boolean;conversation_context?:{agent_id:string;conversation_id:string;goal_context:GoalApproval|null;work_context?:WorkApproval|null;pending:boolean}|null};
 export const presenceAction=<T,>(action:string,payload:Record<string,unknown>={})=>invoke<T>('presence_command',{payload:{action,...payload}});
 const envelope=()=>({protocol_version:1 as const,command_id:crypto.randomUUID()});
 async function send<T>(command:Command):Promise<T>{const r=await invoke<{status:string;data:T}>('runtime_command',{command});if(r.status!=='persisted')throw new Error('操作未确认保存');return r.data;}
+export function PresenceStatus({openSettings,collapsed}:{openSettings:()=>void;collapsed:boolean}){
+ const [value,setValue]=useState<PresenceConfig|null>(null),[unavailable,setUnavailable]=useState(false);
+ useEffect(()=>{let active=true;void presenceAction<PresenceConfig>('snapshot').then(v=>{if(active)setValue(v);}).catch(()=>{if(active)setUnavailable(true);});const subscription=listen<PresenceConfig>('presence-settings',event=>{if(active){setValue(event.payload);setUnavailable(false);}});return()=>{active=false;void subscription.then(stop=>stop());};},[]);
+ return <button type="button" className="presence-status" aria-label={'桌面 Presence · '+(unavailable?'状态不可用':value?(value.enabled?'开启':'关闭'):'读取中')} title="桌面 Presence 设置" onClick={openSettings}><Icon name="presence"/>{!collapsed&&<><span>桌面 Presence</span><small>{unavailable?'不可用':value?(value.enabled?'开启':'关闭'):'…'}</small></>}</button>;
+}
 export function PresenceSettings(){
  const [value,setValue]=useState<PresenceConfig|null>(null),[error,setError]=useState(''),[saving,setSaving]=useState(false),[notice,setNotice]=useState('');
  useEffect(()=>{void presenceAction<PresenceConfig>('snapshot').then(setValue).catch(e=>setError(String(e)));},[]);
@@ -100,7 +105,7 @@ export function PresenceApp(){
      {currentContext?.work_context&&<p className="small">使用主窗口已确认的当前工作状态与反馈；资料改变后需重新确认。</p>}{currentContext?.goal_context&&<p className="small">使用本次已确认的目标资料；变化后需重新确认。</p>}
      {active&&<p className="small" role="status">{active.conversation_id===cid?'正在生成回复…':'此 Agent 正在另一会话回复。'}<button className="text-button" onClick={()=>void open({pane:'chat',conversation_id:active.conversation_id})}>查看原会话</button>{active.conversation_id===cid&&<button className="text-button" onClick={()=>void act({...envelope(),type:'CancelRun',agent_id:agent.agent_id,payload:{run_id:active.run_id}}).catch(e=>setError(String(e)))}>停止回复</button>}</p>}
      <VoiceControls agentId={agent.agent_id} cid={cid} chat={snapshot!.chat!} disabled={disabled} canSend={ready&&!blocked} execute={act as Execute} onText={submit}/>
-     <form onSubmit={e=>{e.preventDefault();void submit(text,true).catch(()=>{});}}><label className="sr-only" htmlFor="presence-input">快速消息</label><textarea id="presence-input" rows={2} maxLength={12000} value={text} onChange={e=>setText(e.target.value)} placeholder="说出需求，或写一句话…" disabled={disabled}/><button id="presence-send" disabled={disabled||!text.trim()||!ready||blocked||!!active}>发送</button></form>
+     <form onSubmit={e=>{e.preventDefault();void submit(text,true).catch(()=>{});}}><label className="sr-only" htmlFor="presence-input">快速消息</label><textarea id="presence-input" rows={2} maxLength={snapshot?.provider.chat_input_unlimited?undefined:12000} value={text} onChange={e=>setText(e.target.value)} placeholder="说出需求，或写一句话…" disabled={disabled}/><button id="presence-send" disabled={disabled||!text.trim()||!ready||blocked||!!active}>发送</button></form>
      {latest&&<section className="presence-reply"><button type="button" className="text-button" aria-expanded={replyOpen} onClick={()=>setReplyOpen(!replyOpen)}>{replyOpen?'收起最近回复':'查看最近回复'}</button><div hidden={!replyOpen}><Markdown text={latest.content}/>{latest.finality==='final'&&<ReadReply agentId={agent.agent_id} cid={cid} id={latest.message_id} content={latest.content} disabled={disabled}/>}</div></section>}
      <label className="small">续办已有目标<Select id="presence-goal" value="" onChange={e=>{if(e.target.value)void open({pane:'chat',goal_id:e.target.value});}}><option value="">选择后打开主窗口确认…</option>{snapshot?.goals?.filter(g=>g.state==='Active').map(g=><option key={g.goal_id} value={g.goal_id}>{g.title}</option>)}</Select></label>
      {snapshot?.chat?.work?.some(w=>w.state==='Pending'&&['file_task','agent_task'].includes(w.suggestion?.kind??'')||w.state==='None'&&w.can_prepare_file)&&<button id="presence-continue-work" className="secondary" onClick={()=>void open({pane:'chat',work_run_id:snapshot.chat!.work!.find(w=>w.state==='Pending'&&['file_task','agent_task'].includes(w.suggestion?.kind??'')||w.state==='None'&&w.can_prepare_file)!.run_id})}>沿这条需求选择文件…</button>}

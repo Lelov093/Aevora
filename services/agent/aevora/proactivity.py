@@ -30,7 +30,7 @@ class ProactivityRepository:
         row = db.execute('SELECT * FROM proactive_settings WHERE agent_id=?', (aid,)).fetchone()
         return dict(row) if row else {'agent_id': aid, 'revision': 0, 'observe': 0, 'think': 0, 'notify': 0,
             'goal_ids': '[]', 'provider': '{}', 'quiet_start': 22, 'quiet_end': 8, 'max_daily_calls': 2,
-            'max_daily_notifications': 2, 'cooldown_minutes': 60}
+            'max_daily_notifications': 2, 'cooldown_minutes': 60, 'calls_unlimited':0, 'notifications_unlimited':0}
 
     def followup_policy(self, db, aid, gid):
         row = db.execute('SELECT * FROM goal_followup_policy WHERE agent_id=? AND goal_id=?', (aid, gid)).fetchone()
@@ -137,9 +137,9 @@ class ProactivityRepository:
                     current = [self.context(db, aid, gid) for gid in p['goal_ids']]
                     if preview != [v['references'] for v in current]:
                         raise DomainError('RevisionConflict', 'Review current selected Goal contexts before enabling observation')
-                db.execute('INSERT OR REPLACE INTO proactive_settings VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                db.execute('INSERT OR REPLACE INTO proactive_settings VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                            (aid, settings['revision']+1, int(p['observe']), int(p['think']), int(p['notify']), json.dumps(p['goal_ids']),
-                            json.dumps(p['provider']), p['quiet_start'], p['quiet_end'], p['max_daily_calls'], p['max_daily_notifications'], p['cooldown_minutes']))
+                            json.dumps(p['provider']), p['quiet_start'], p['quiet_end'], p['max_daily_calls'], p['max_daily_notifications'], p['cooldown_minutes'], int(p.get('calls_unlimited',False)), int(p.get('notifications_unlimited',False))))
                 # Configuration changes revoke delayed/in-flight work. No old alert is replayed on re-enable.
                 db.execute("UPDATE proactive_checks SET state='Invalidated',context='{}',raw_output='',message='',next_step='',reason='' WHERE agent_id=? AND state IN ('Pending','Thinking','Delayed','Snoozed','Notified')", (aid,))
                 erase_cached(db, {r[0] for r in db.execute('SELECT check_id FROM proactive_checks WHERE agent_id=?', (aid,))})

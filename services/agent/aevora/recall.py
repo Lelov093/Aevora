@@ -99,7 +99,7 @@ class RecallRuntime:
         with self.store.transaction() as db:
             db.execute("INSERT OR IGNORE INTO selection_grants(grant_id) VALUES (?)", (config["grant_id"],))
             grant = db.execute("SELECT calls_started FROM selection_grants WHERE grant_id=?", (config["grant_id"],)).fetchone()
-            if grant[0] >= config["max_calls"]:
+            if config.get("calls_unlimited") is not True and grant[0] >= config["max_calls"]:
                 raise DomainError("RecallUnavailable", "Recall selection budget exhausted; no unfiltered fallback")
             db.execute("UPDATE selection_grants SET calls_started=calls_started+1 WHERE grant_id=?", (config["grant_id"],))
             db.execute("INSERT INTO selection_requests VALUES (?,?,'Running',NULL,?)", (request_id, aid, json.dumps(metadata)))
@@ -147,8 +147,8 @@ class RecallRuntime:
             raise DomainError("BudgetExceeded", "Embedding input exceeds its estimate budget")
         db.execute("INSERT OR IGNORE INTO embedding_grants(grant_id) VALUES (?)", (config["grant_id"],))
         grant = db.execute("SELECT * FROM embedding_grants WHERE grant_id=?", (config["grant_id"],)).fetchone()
-        if not self.testing_unlimited and (grant["calls_started"] >= config["max_calls"]
-                or grant["input_estimate"] + estimate > config["max_total_input_tokens"]):
+        if not self.testing_unlimited and ((config.get("calls_unlimited") is not True and grant["calls_started"] >= config["max_calls"])
+                or (config.get("input_unlimited") is not True and grant["input_estimate"] + estimate > config["max_total_input_tokens"])):
             raise DomainError("RecallUnavailable", "Embedding budget exhausted; no old-context fallback")
         db.execute("UPDATE embedding_grants SET calls_started=calls_started+1,input_estimate=input_estimate+? WHERE grant_id=?", (estimate, config["grant_id"]))
         return {"purpose": "MemoryEmbedding", "provider_revision": config["revision"], "grant_id": config["grant_id"],

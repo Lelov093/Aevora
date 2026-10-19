@@ -644,7 +644,7 @@ fn read(ws: &mut WebSocket<MaybeTlsStream<TcpStream>>) -> Result<Option<Value>, 
 }
 fn service_error(e: &Value) -> String {
     format!(
-        "语音服务未完成：{}。未自动重试；请检查权限、免费额度和设置。",
+        "语音服务未完成：{}。未自动重试；请检查权限、服务账户用量和设置。",
         e["header"]["error_code"].as_str().unwrap_or("task-failed")
     )
 }

@@ -19,7 +19,7 @@ fn defaults() -> Value {
         "grant_id":Uuid::new_v4().to_string(),"max_calls":4,"max_seconds":120},
       "tts":{"model":"qwen-audio-3.1-tts-flash","api_key":"","enabled":false,
         "grant_id":Uuid::new_v4().to_string(),"voice":"longanhuan_v3.1","rate":1.0,
-        "max_calls":6,"max_characters":4000,"free_until":""}})
+        "max_calls":6,"max_characters":4000,"budget_mode":"general"}})
 }
 fn tts_voice(model: &Value) -> Option<&'static str> {
     match model.as_str()? {
@@ -51,15 +51,16 @@ pub fn endpoint(c: &Value) -> Result<String, String> {
     ))
 }
 pub fn tts_available(c: &Value, now: chrono::DateTime<chrono::Utc>) -> Result<(), String> {
+    if c["tts"]["budget_mode"] == "general" { return Ok(()); }
     let date = chrono::NaiveDate::parse_from_str(
         c["tts"]["free_until"].as_str().unwrap_or(""),
         "%Y-%m-%d",
     )
-    .map_err(|_| "请设置免费额度截止日，并确认控制台的用完即停。")?;
+    .map_err(|_| "旧朗读配置需要重新确认，请保存语音设置。")?;
     // Conservative boundary: stop at the beginning of the stated expiry day (Beijing).
     let until = date.and_hms_opt(0, 0, 0).unwrap().and_utc() - chrono::Duration::hours(8);
     if now >= until {
-        return Err("TTS 免费额度已到截止日，朗读已暂停；付费使用需另行批准。".into());
+        return Err("旧朗读授权已到期，请保存语音设置重新确认。".into());
     }
     Ok(())
 }
@@ -147,7 +148,6 @@ impl Vault {
             ("AEVORA_TTS_MODEL", "tts", "model"),
             ("AEVORA_TTS_API_KEY", "tts", "api_key"),
             ("AEVORA_TTS_VOICE", "tts", "voice"),
-            ("AEVORA_TTS_FREE_UNTIL", "tts", "free_until"),
         ] {
             if let Some(x) = values.get(env) {
                 self.config[purpose][field] = json!(x);
@@ -215,6 +215,8 @@ impl Vault {
                 .filter(|n| *n > 0 && *n <= 1000)
                 .ok_or("调用上限须为1–1000")?;
             c[name]["max_calls"] = json!(calls);
+            c[name]["calls_unlimited"] = json!(q["calls_unlimited"]==true);
+            c[name]["units_unlimited"] = json!(q["units_unlimited"]==true);
             let unit = if name == "asr" {
                 "max_seconds"
             } else {
@@ -237,15 +239,11 @@ impl Vault {
             .as_f64()
             .filter(|r| *r >= 0.5 && *r <= 2.0)
             .ok_or("语速须为0.5–2")?);
-        c["tts"]["free_until"] = p["tts"]["free_until"].clone();
+        c["tts"]["budget_mode"] = json!("general");
+        c["tts"].as_object_mut().unwrap().remove("free_until");
+        c["tts"].as_object_mut().unwrap().remove("free_tier_only_confirmed");
         if c["asr"]["enabled"] == true || c["tts"]["enabled"] == true {
             endpoint(&c)?;
-        }
-        if c["tts"]["enabled"] == true {
-            if p["tts"]["free_tier_only_confirmed"] != true {
-                return Err("请确认百炼的免费额度用完即停已开启。".into());
-            }
-            tts_available(&c, chrono::Utc::now())?;
         }
         c["revision"] = json!(self.config["revision"].as_u64().unwrap_or(0) + 1);
         let old = std::mem::replace(&mut self.config, c);
@@ -302,8 +300,8 @@ impl Vault {
             })
             .sum();
         if !self.testing_unlimited
-            && (prior.len() >= p["max_calls"].as_u64().unwrap_or(0) as usize
-                || reserved + units > p[limit].as_f64().unwrap_or(0.0))
+            && ((p["calls_unlimited"] != true && prior.len() >= p["max_calls"].as_u64().unwrap_or(0) as usize)
+                || (p["units_unlimited"] != true && reserved + units > p[limit].as_f64().unwrap_or(0.0)))
         {
             return Err("语音预算已用尽；没有自动增加或重试。".into());
         }

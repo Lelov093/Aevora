@@ -83,7 +83,7 @@ class ChatRuntime:
                     messages, refs = build_context(db, self.store.identity.profile(db, aid), run["conversation_id"], source[0],
                         config, latest["context"].get("history_before_sequence", source["sequence"]), memories, recalled,
                         input_timezone=self.store.input_timezone, goal_projection=projection, work_suggestions=work_enabled, work_projection=work_projection,
-                        interaction_refs=trial_refs)
+                        interaction_refs=trial_refs, chat_limits=True)
                     if trial:
                         refs['interaction_trial'] = trial
                     if work_enabled:
@@ -108,16 +108,18 @@ class ChatRuntime:
                 refs = latest["context"] | {"request_sent": True}
                 import json
                 db.execute("UPDATE runs SET context=? WHERE run_id=?", (json.dumps(refs), rid))
+            output_unlimited = config.get("chat_output_unlimited") is True
+            request_config = config | {"output_unlimited": True} if output_unlimited else config
             def consume(delta):
                 live = self.live[rid]
                 if work_enabled:
                     live['raw_text'] += delta
-                    if len(live['raw_text']) > 65536:
+                    if not output_unlimited and len(live['raw_text']) > 65536:
                         raise DomainError('BudgetExceeded', 'Work response exceeded local capacity')
                     live['text'] = reply_prefix(live['raw_text'])
                     self.broadcast({"type": "RunDelta", **{k:v for k,v in live.items() if k != 'raw_text'}})
                     return
-                if len(live["text"]) + len(delta) > 32_768:
+                if not output_unlimited and len(live["text"]) + len(delta) > 32_768:
                     raise DomainError("BudgetExceeded", "Provider output exceeded the local text limit")
                 live["text"] += delta
                 self.broadcast({"type": "RunDelta", **live})
@@ -125,12 +127,12 @@ class ChatRuntime:
                     self.store.probe_point("chat.delta", {"agent_id": aid, "run_id": rid,
                         "text": live["text"], "metadata": metadata})
             if work_enabled:
-                await self.gateway.stream(config, messages, consume, metadata, response_format={'type': 'json_object'})
+                await self.gateway.stream(request_config, messages, consume, metadata, response_format={'type': 'json_object'})
             else:
-                await self.gateway.stream(config, messages, consume, metadata)
+                await self.gateway.stream(request_config, messages, consume, metadata)
             reason = metadata.get("finish_reason")
             if reason == 'stop' and work_enabled:
-                self.live[rid]['text'] = decode_work(self.live[rid]['raw_text'])[0]
+                self.live[rid]['text'] = decode_work(self.live[rid]['raw_text'], max_reply_chars=None if output_unlimited else 32768)[0]
             if reason == "stop" and self.live[rid]["text"]:
                 state = "Completed"
             else:

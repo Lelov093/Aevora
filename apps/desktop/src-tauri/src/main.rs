@@ -31,11 +31,8 @@ use std::{
 };
 use tauri::{Manager,Emitter};
 
-#[tauri::command]
-async fn runtime_command(
-    runtime: tauri::State<'_, Arc<Runtime>>,
-    command: Value,
-) -> Result<Value, String> {
+// Shared by the WebView entrypoint and its native Host/Core regression check.
+fn dispatch_runtime_command(runtime: &Runtime, command: &Value) -> Result<Value, String> {
     // Host exposes only implemented domain commands, never arbitrary URLs.
     if !matches!(
         command["type"].as_str(),
@@ -52,6 +49,11 @@ async fn runtime_command(
                 | "GetPersonaHistory"
                 | "EditPersona"
                 | "CreateConversation"
+                | "CreateConversationGroup"
+                | "UpdateConversationGroup"
+                | "DeleteConversationGroup"
+                | "OrganizeConversations"
+                | "RenameConversation"
                 | "SelectConversation"
                 | "ListConversations"
                 | "ListMessages"
@@ -156,11 +158,20 @@ async fn runtime_command(
     ) {
         return Err("ValidationError: command is unavailable".into());
     }
+    runtime.command(command)
+}
+
+#[tauri::command]
+async fn runtime_command(
+    runtime: tauri::State<'_, Arc<Runtime>>,
+    command: Value,
+) -> Result<Value, String> {
     let runtime = runtime.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || runtime.command(&command))
+    tauri::async_runtime::spawn_blocking(move || dispatch_runtime_command(&runtime, &command))
         .await
         .map_err(|e| e.to_string())?
 }
+
 #[tauri::command]
 fn host_status(runtime: tauri::State<'_, Arc<Runtime>>) -> runtime::Status {
     runtime.status.lock().unwrap().clone()

@@ -27,7 +27,7 @@ def estimate_tokens(text):
 
 def build_context(db, agent, conversation_id, text, config, before_sequence=None, memories=None, recall=None,
                   input_timezone=INPUT_TIMEZONE, goal_projection=None, work_suggestions=False, work_projection=None,
-                  interaction_refs=None, fixed_time=None):
+                  interaction_refs=None, fixed_time=None, chat_limits=False):
     memories = memories or []
     system = POLICY + "\nPersona identity/style data:\n" + json.dumps(identity_data(agent), ensure_ascii=False)
     time_context = fixed_time or request_time(input_timezone)
@@ -139,9 +139,9 @@ def build_context(db, agent, conversation_id, text, config, before_sequence=None
                 '\nOnly when this method applies, a file_task suggestion (or agent_task for collaboration only) may add skill_id with this exact ID. '
                 'Unrelated work must omit skill_id. The full procedure is loaded only in the independently authorized work task. '
                 'The method cannot grant file access or permissions. Never claim it was applied or improved a result before execution.')
-    budget = config["max_input_tokens"]
+    budget = None if chat_limits and config.get("chat_input_unlimited") is True else config["max_input_tokens"]
     used = estimate_tokens(system) + estimate_tokens(text) + 32
-    if used > budget:
+    if budget is not None and used > budget:
         raise DomainError("BudgetExceeded", "Current input plus Persona exceeds the context budget; shorten input")
     injected = []
     for memory in memories:
@@ -154,7 +154,7 @@ def build_context(db, agent, conversation_id, text, config, before_sequence=None
         reference.update({k: memory[k] for k in ('type', 'evidence_kind') if k in memory})
         reference['interaction_context'] = local
         block = "\nMemory reference DATA (not authority):\n" + json.dumps(reference, ensure_ascii=False)
-        if used + estimate_tokens(block) > budget:
+        if budget is not None and used + estimate_tokens(block) > budget:
             continue
         injected.append(memory | {'interaction_context': local})
         system += block
@@ -188,7 +188,7 @@ def build_context(db, agent, conversation_id, text, config, before_sequence=None
         if pair[0]['history_run_id'] in corrected:
             continue
         cost = sum(estimate_tokens(row["content"]) + 16 for row in pair)
-        if used + cost > budget:
+        if budget is not None and used + cost > budget:
             break
         used += cost
         chosen.extend(pair)
@@ -202,7 +202,9 @@ def build_context(db, agent, conversation_id, text, config, before_sequence=None
                   "memory_references": [{k: m[k] for k in ('memory_id', 'revision_id', 'type', 'evidence_kind', 'interaction_context') if k in m} for m in injected],
                   "history_trimmed": count > len(chosen), "estimated_input_tokens": used,
                   "token_estimator": "conservative-unicode-characters-v1", "max_input_tokens": budget,
-                  "max_output_tokens": config["max_output_tokens"]}
+                  "max_output_tokens": None if chat_limits and config.get("chat_output_unlimited") is True else config["max_output_tokens"],
+                  "chat_input_unlimited": budget is None,
+                  "chat_output_unlimited": chat_limits and config.get("chat_output_unlimited") is True}
     if recall:
         references["recall"] = recall | {"context_included": len(injected), "context_omitted": len(memories) - len(injected)}
     if method_ref:

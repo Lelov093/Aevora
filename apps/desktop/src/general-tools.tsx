@@ -1,10 +1,11 @@
+import {BudgetField} from './budget-field';
 import {useState} from 'react';
 import {invoke} from '@tauri-apps/api/core';
 import {CheckField,NumberField,Select} from './controls';
 import type {Execute} from './chat';
 import type {Step} from './task-plan';
 export type ToolRoot={path:string;mode:'read'|'write';recursive:boolean;auto_create:boolean};
-export type ToolScope={roots:ToolRoot[];programs:('python'|'powershell')[];urls:string[];command_timeout_seconds:number;execution_seconds:number;max_total_tokens:number};
+export type ToolScope={roots:ToolRoot[];programs:('python'|'powershell')[];urls:string[];command_timeout_seconds:number;execution_seconds:number;max_total_tokens:number;tokens_unlimited?:boolean};
 export const emptyToolScope=():ToolScope=>({roots:[],programs:[],urls:[],command_timeout_seconds:60,execution_seconds:900,max_total_tokens:1000000});
 export const generalWrites=['write_file','manage_files','run_command'];
 export type ToolProduct={root:string;path:string;version:string;bytes:number};
@@ -20,7 +21,7 @@ export function ToolScopeFields({value,change}:{value:ToolScope;change:(v:ToolSc
   <details><summary>公开网页与本地计算（可选）</summary><label>允许读取的公开HTTPS网页，每行一个<textarea id="tool-urls" value={value.urls.join('\n')} onChange={e=>change({...value,urls:e.target.value.split(/\r?\n/).map(v=>v.trim()).filter(Boolean)})}/></label><p className="small muted">仅公开静态网页，不含登录、JS执行、PDF或附件；与搜索共用最多6次页面读取。</p>
    {(['python','powershell'] as const).map(program=><label className="check" key={program}><CheckField checked={value.programs.includes(program)} onChange={e=>change({...value,programs:e.target.checked?[...value.programs,program]:value.programs.filter(p=>p!==program)})}/>允许提出 {program==='python'?'Python':'Windows PowerShell'} 本地计算／转换方案</label>)}
    {!!value.programs.length&&<p className="notice">具体命令、脚本、输入与产物需要另行审阅后批准。程序具有当前Windows用户权限，工作目录不构成系统沙箱；不会获得Host凭据。不用于安装、联网、系统设置或发布。</p>}
-   <label>命令单次上限（秒，最多120）<NumberField min={1} max={120} value={value.command_timeout_seconds} onChange={e=>change({...value,command_timeout_seconds:Number(e.target.value)})}/></label><label>累计主动执行上限（秒，最多1800；等待你时不计）<NumberField min={1} max={1800} value={value.execution_seconds} onChange={e=>change({...value,execution_seconds:Number(e.target.value)})}/></label><label>任务总模型用量预算（含未知用量保守预留）<NumberField min={64} max={1000000} value={value.max_total_tokens} onChange={e=>change({...value,max_total_tokens:Number(e.target.value)})}/></label>
+   <label>命令单次上限（秒，最多120）<NumberField min={1} max={120} value={value.command_timeout_seconds} onChange={e=>change({...value,command_timeout_seconds:Number(e.target.value)})}/></label><label>累计主动执行上限（秒，最多1800；等待你时不计）<NumberField min={1} max={1800} value={value.execution_seconds} onChange={e=>change({...value,execution_seconds:Number(e.target.value)})}/></label><BudgetField label="任务总模型用量预算（含未知预留）" min={64} max={1000000} value={value.max_total_tokens} unlimited={!!value.tokens_unlimited} onChange={n=>change({...value,max_total_tokens:n})} onUnlimitedChange={v=>change({...value,tokens_unlimited:v})}/>
   </details>{error&&<p role="alert" className="error">{error}</p>}
  </section>;
 }

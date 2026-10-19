@@ -67,7 +67,7 @@ class ProactivityRuntime:
             return True
         day = self.local().date().isoformat()
         db.execute('INSERT OR IGNORE INTO proactive_budgets(agent_id,local_date) VALUES (?,?)',(aid,day))
-        if db.execute('SELECT notifications FROM proactive_budgets WHERE agent_id=? AND local_date=?',(aid,day)).fetchone()[0] >= settings['max_daily_notifications']:
+        if not settings.get('notifications_unlimited') and db.execute('SELECT notifications FROM proactive_budgets WHERE agent_id=? AND local_date=?',(aid,day)).fetchone()[0] >= settings['max_daily_notifications']:
             return True
         cid = previous['check_id'] if previous else str(uuid4())
         stamp = repo.clock().isoformat()
@@ -128,7 +128,7 @@ class ProactivityRuntime:
                     day = self.local().date().isoformat()
                     db.execute('INSERT OR IGNORE INTO proactive_budgets(agent_id,local_date) VALUES (?,?)', (aid, day))
                     budget = db.execute('SELECT * FROM proactive_budgets WHERE agent_id=? AND local_date=?', (aid, day)).fetchone()
-                    if budget['calls'] >= settings['max_daily_calls'] or (settings['notify'] and budget['notifications'] >= settings['max_daily_notifications']):
+                    if (not settings.get('calls_unlimited') and budget['calls'] >= settings['max_daily_calls']) or (settings['notify'] and not settings.get('notifications_unlimited') and budget['notifications'] >= settings['max_daily_notifications']):
                         continue
                     cid = row['check_id'] if row else str(uuid4())
                     if not row:
@@ -199,7 +199,7 @@ class ProactivityRuntime:
                     if state == 'Notified':
                         db.execute('INSERT OR IGNORE INTO proactive_budgets(agent_id,local_date) VALUES (?,?)', (aid, delivery_day))
                         used = db.execute('SELECT notifications FROM proactive_budgets WHERE agent_id=? AND local_date=?', (aid, delivery_day)).fetchone()[0]
-                        if used >= current['max_daily_notifications']:
+                        if not current.get('notifications_unlimited') and used >= current['max_daily_notifications']:
                             state, due, stamp = 'Delayed', (repo.clock()+timedelta(minutes=1)).isoformat(), None
                     db.execute('UPDATE proactive_checks SET state=?,decision=?,reason=?,message=?,next_step=?,due_at=?,notified_at=?,raw_output=?,metadata=? WHERE check_id=?',
                                (state, result['decision'], result['reason'], result['message'] if state == 'Notified' else '', result['next_step'] if state == 'Notified' else '', due, stamp, raw, json.dumps(metadata), cid))

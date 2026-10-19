@@ -129,8 +129,8 @@ impl Authority {
             + provider["max_output_tokens"].as_u64().unwrap_or(1024);
         let calls = p["calls"].as_u64().unwrap_or(0);
         let tokens = p["tokens"].as_u64().unwrap_or(0);
-        if calls >= p["scope"]["max_calls"].as_u64().unwrap_or(0)
-            || tokens + reserve > p["scope"]["max_tokens"].as_u64().unwrap_or(0)
+        if (p["scope"]["calls_unlimited"] != true && calls >= p["scope"]["max_calls"].as_u64().unwrap_or(0))
+            || (p["scope"]["tokens_unlimited"] != true && tokens + reserve > p["scope"]["max_tokens"].as_u64().unwrap_or(0))
         {
             return Err("ExecutionModelBudget".into());
         }

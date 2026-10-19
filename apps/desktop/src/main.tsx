@@ -1,3 +1,8 @@
+import {SearchSettings} from './search-settings';
+import {PermissionsOverview} from './permissions-overview';
+import {ActionMenu} from './action-menu';
+import {SettingsWorkspace,SettingSection,type SettingsPage} from './settings-workspace';
+import {ConversationLearningPanel} from './interaction-learning';
 import type {WorkActivity} from './work-state';
 import {SpeechSettings,type SpeechView} from './voice';
 import {PresenceSettings,PresenceApp} from './presence';
@@ -12,6 +17,8 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Command } from "../../../packages/protocol/command";
 import "./style.css";
+import "./boardui.css";
+import "./secondary-pages.css";
 import type {Search} from './network-tasks';
 import {Divider,usePanelWidth} from './layout';
 import {TasksPanel} from "./tasks";
@@ -78,7 +85,7 @@ function PersonaEditor({agent, disabled, save}: {agent: Agent; disabled: boolean
   }
   return <section className="settings-section">
     <div className="section-heading"><h2 id="agent-name">{agent.name}</h2><span className="badge">Persona v{agent.persona.revision}</span></div>
-    <section className="identity"><p className="small muted">身份信息 · Persona v{agent.current_persona_revision}</p><code>{agent.agent_id}</code></section>
+    <details className="identity"><summary>身份信息</summary><p className="small muted">Persona v{agent.current_persona_revision}</p><code>{agent.agent_id}</code></details>
     <form id="persona-form" onSubmit={e => void submit(e)}>
       <label>身份描述<textarea id="edit-description" required maxLength={2000} rows={4}
         value={draft.identity_description} disabled={disabled} onChange={e => update("identity_description",e.target.value)}/></label>
@@ -105,7 +112,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [settings, setSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"persona"|"provider"|"voice"|"memory"|"proactivity"|"runtime">("persona");
+  const [settingsTab, setSettingsTab] = useState<SettingsPage>("persona");
   const [sidebarCollapsed,setSidebarCollapsed]=useState(window.innerWidth<=760);
   useEffect(()=>{const media=matchMedia('(max-width:760px)');const adapt=()=>{if(media.matches)setSidebarCollapsed(true);};media.addEventListener('change',adapt);return()=>media.removeEventListener('change',adapt);},[]);
   const [agentMenu, setAgentMenu] = useState(false);
@@ -114,8 +121,8 @@ function App() {
   const [pane, setPane] = useState<"chat"|"memory"|"tasks">("chat");
   const [focusWorkSection,setFocusWorkSection]=useState<"tasks"|"goals"|"schedules"|"methods">("tasks");
   const [memoryView,setMemoryView]=useState<"memories"|"processing">("memories");
-  function navigate(value:typeof pane){setPane(value);if(window.innerWidth<=620)setSidebarCollapsed(true);}
-  const navigationWidth=usePanelWidth('aevora.navigationWidth',200,170,340);
+  function navigate(value:typeof pane){setSettings(false);setPane(value);if(window.innerWidth<=620)setSidebarCollapsed(true);}
+  const navigationWidth=usePanelWidth('aevora.navigationWidth',240,170,340);
   const [focusConversation,setFocusConversation]=useState<string|null>(null);
   const [workRequest,setWorkRequest]=useState(0),[focusGoalId,setFocusGoalId]=useState<string|null>(null);
   const [locateMessage,setLocateMessage]=useState<{conversation_id:string;message_id:string;nonce:number}|null>(null);
@@ -181,14 +188,16 @@ function App() {
   const paused=snapshot?.runtime_state==="Paused";
   const status=host?.status==="Ready"?(paused?"后台已暂停":"运行中"):
     host?.status==="Offline"?"连接已中断":host?.status==="Recovering"?"正在恢复":"正在连接";
-  async function newConversation(){
+  async function newConversation(groupId?:string){
     if(!selected)return;
-    try{await act({...envelope(),type:"CreateConversation",agent_id:selected.agent_id,payload:{}});navigate("chat");}catch{}
+    try{await act({...envelope(),type:"CreateConversation",agent_id:selected.agent_id,payload:groupId?{group_id:groupId}:{}});navigate("chat");}catch{}
   }
   async function resumeGoal(g:Goal){if(!selected)return;try{await act({...envelope(),type:'CreateConversation',agent_id:selected.agent_id,payload:{resume_goal_id:g.goal_id}});navigate('chat');}catch{}}
   function openTasks(id?:string,taskId?:string,section?:typeof focusWorkSection,goalId?:string,conversationId=snapshot?.chat?.selected_conversation_id??null){setFocusWorkSection(taskId?'tasks':id?'schedules':section??'tasks');setFocusScheduleId(id??null);setFocusTaskId(taskId??null);setFocusGoalId(goalId??null);setFocusConversation(conversationId);setWorkRequest(v=>v+1);navigate('chat');}
   function allItems(){setFocusTaskId(null);setFocusScheduleId(null);setFocusGoalId(null);navigate('tasks');}
   async function openConversation(id:string,messageId?:string){if(!selected)return;if(id!==snapshot?.chat?.selected_conversation_id)await act({...envelope(),type:'SelectConversation',agent_id:selected.agent_id,payload:{conversation_id:id}});if(messageId)setLocateMessage({conversation_id:id,message_id:messageId,nonce:Date.now()});navigate('chat');}
+  function openSettingsPage(page:SettingsPage){setSettingsTab(page);setSettings(true);}
+  function openWorkMethods(){setFocusWorkSection("methods");setFocusTaskId(null);setFocusScheduleId(null);navigate("tasks");}
   function openProvider(){setSettingsTab("provider");setSettings(true);}
   presenceOpen.current=async v=>{
     setSettings(false);
@@ -201,34 +210,49 @@ function App() {
     if(v.pane==='tasks'){const fresh=await send<Snapshot>({...envelope(),type:'GetSnapshot',payload:{}});openTasks(v.schedule_id,v.task_id,undefined,undefined,fresh.chat?.selected_conversation_id??null);if(!fresh.chat?.selected_conversation_id)navigate('tasks');}else navigate('chat');
   };
 
-  function taskPanel(embedded=false){
+  function taskPanel(embedded=false,embeddedView?:'artifacts'|'overview'){
     if(!selected||!snapshot)return null;
     const current=!embedded||focusConversation===snapshot.chat?.selected_conversation_id;
     const cid=snapshot.chat?.selected_conversation_id??undefined;
-    return <TasksPanel key={selected.agent_id} embedded={embedded} conversationId={cid}
+    return <TasksPanel key={selected.agent_id} embedded={embedded} embeddedView={embeddedView} conversationId={cid}
       contextGoalIds={[...(snapshot.chat?.work?.flatMap(w=>[w.goal_id,w.context_goal_id].filter((id):id is string=>!!id))??[]),...(goalSeed&&goalSeed.conversation_id===cid?[goalSeed.goal_id]:[])]}
       agentId={selected.agent_id} provider={snapshot.provider} search={snapshot.search} sequence={snapshot.sequence} disabled={disabled} read={send} execute={act}
       scheduler={snapshot.scheduler} runtimeState={snapshot.runtime_state} openConversation={openConversation} focusScheduleId={current&&focusWorkSection==='schedules'?focusScheduleId:null} focusTaskId={current&&focusWorkSection==='tasks'?focusTaskId:null} focusGoalId={current&&focusWorkSection==='goals'?focusGoalId:null}
       goals={snapshot.goals??[]} resumeGoal={g=>void resumeGoal(g)} workSeed={workSeed} consumeWorkSeed={()=>setWorkSeed(null)} learnSeed={learnSeed} consumeLearnSeed={()=>setLearnSeed(null)} initialSection={focusWorkSection}
       openOverview={()=>navigate('tasks')} sectionChanged={setFocusWorkSection} selectionChanged={id=>{setFocusTaskId(id);setFocusConversation(cid??null);}}/>
   }
-  return <main className="app-shell">
+  return <main className={"app-shell "+(selected?"has-agent":"")}>
+    {!selected&&<>
     <header className="app-header"><button className="icon-button" id="toggle-navigation" aria-label={sidebarCollapsed?"展开导航":"收起导航"} aria-expanded={!sidebarCollapsed} onClick={()=>setSidebarCollapsed(!sidebarCollapsed)}><Icon name="menu"/></button>
       <div className="brand" aria-label="Aevora"><span className="brand-mark">a</span><span>AEVORA</span></div>
       <button id="agent-switcher" className="agent-switcher" aria-haspopup="dialog" onClick={()=>setAgentMenu(true)} disabled={!snapshot}>
-        <span className="avatar small">{selected?.name.slice(0,1)||"A"}</span><span>{selected?.name||"选择你的 Agent"}</span><Icon name="chevron"/>
+        <span className="avatar small">A</span><span>选择你的 Agent</span><Icon name="chevron"/>
       </button>
-      <span id="agent-id" hidden>{selected?.agent_id}</span>
+
       <div className="runtime-bar" aria-live="polite"><span className={"status-dot "+(host?.status==="Ready"?(paused?"paused":"ready"):"offline")}/><span className="runtime-label">{status}</span>
         <button id="runtime-toggle" className="icon-button" aria-label={paused?"恢复后台工作":"暂停后台工作"} title={paused?"恢复后台工作":"暂停后台工作（前台对话仍可用）"} disabled={disabled||!snapshot}
           onClick={()=>{if(snapshot)void act({...envelope(),type:paused?"Resume":"Pause",expected_revision:snapshot.revision,payload:{}}).catch(()=>{});}}><Icon name={paused?"play":"pause"}/></button>
       </div>
       <button id="open-settings" className="icon-button" aria-label="设置" title="设置" disabled={!snapshot} onClick={()=>setSettings(true)}><Icon name="settings"/></button>
     </header>
-    <div className="app-body" style={{"--nav-width":navigationWidth.width+"px"} as React.CSSProperties}>
+    </>}
+    <span id="agent-id" hidden>{selected?.agent_id}</span>
+    <div className="app-body" hidden={settings} style={{"--nav-width":navigationWidth.width+"px"} as React.CSSProperties}>
       {selected&&snapshot?.chat&&<ConversationSidebar key={selected.agent_id} agentId={selected.agent_id} chat={snapshot.chat} sequence={snapshot.sequence} disabled={disabled}
-        collapsed={sidebarCollapsed} openChat={()=>navigate("chat")} pane={pane} newConversation={newConversation} read={send} execute={act} choose={async cid=>{await act({...envelope(),type:"SelectConversation",agent_id:selected.agent_id,payload:{conversation_id:cid}});navigate("chat");}}
-        openMemory={()=>{setMemoryView("memories");navigate("memory");}} openTasks={allItems} openSettings={()=>setSettings(true)}/>}
+        agentControl={<ActionMenu id="agent-switcher" label="Aevora 身份与设置" className="identity-menu" triggerClassName="agent-switcher" trigger={<><span className="avatar small">{selected.name.slice(0,1)}</span><span className="agent-card-label"><strong>{selected.name}</strong><small>你的 Personal AI</small></span><Icon name="chevron"/></>}>
+          <p className="identity-menu-name">{selected.name}<small>当前 Agent</small></p>
+          <button className="text-button" onClick={()=>openSettingsPage('persona')}><Icon name="identity"/>身份与表达</button>
+          <button className="text-button" onClick={()=>setAgentMenu(true)}><Icon name="layers"/>切换或创建 Agent…</button>
+          <button id="open-settings" className="text-button" onClick={()=>setSettings(true)}><Icon name="settings"/>设置</button>
+          <hr/>
+          <div className="runtime-bar" aria-live="polite"><span className={"status-dot "+(host?.status==="Ready"?(paused?"paused":"ready"):"offline")}/><span className="runtime-label">{status}</span>
+        <button id="runtime-toggle" className="icon-button" aria-label={paused?"恢复后台工作":"暂停后台工作"} title={paused?"恢复后台工作":"暂停后台工作（前台对话仍可用）"} disabled={disabled||!snapshot}
+          onClick={()=>{if(snapshot)void act({...envelope(),type:paused?"Resume":"Pause",expected_revision:snapshot.revision,payload:{}}).catch(()=>{});}}><Icon name={paused?"play":"pause"}/></button>
+      </div>
+          <button className="text-button" onClick={()=>openSettingsPage('runtime')}>运行与退出…</button>
+        </ActionMenu>} toggleNavigation={()=>setSidebarCollapsed(!sidebarCollapsed)}
+        openPresence={()=>openSettingsPage('voice')} selectedTaskId={focusTaskId} openTask={async(cid,taskId)=>{await openConversation(cid);openTasks(undefined,taskId,undefined,undefined,cid);}} collapsed={sidebarCollapsed} openChat={()=>navigate("chat")} pane={pane} newConversation={newConversation} read={send} execute={act} choose={async cid=>{await act({...envelope(),type:"SelectConversation",agent_id:selected.agent_id,payload:{conversation_id:cid}});navigate("chat");}}
+        openMemory={()=>{setMemoryView("memories");navigate("memory");}} openTasks={allItems}/>}
       {selected&&!sidebarCollapsed&&<Divider panel={navigationWidth} side="left" label="调节左侧导航宽度"/>}
       <div className="main-area">
         {snapshot?.scheduler_error&&<p className="notice" role="alert">定时提醒暂时无法保存触发结果，请检查本机状态；待触发约定仍保留。</p>}
@@ -241,7 +265,7 @@ function App() {
         pane==="tasks"?<div className="all-items"><button id="return-chat" className="text-button" onClick={()=>navigate("chat")}>← 返回当前对话</button>{taskPanel()}</div>:pane==="memory"?<MemoryCenter initialView={memoryView} key={selected.agent_id} agentId={selected.agent_id} extraction={snapshot.extraction??{}} embedding={snapshot.embedding??{}} sequence={snapshot.sequence} disabled={disabled} runtimeState={snapshot.runtime_state} execute={act} read={send} openTask={id=>openTasks(undefined,id)} openConversation={openConversation}/>:null}
         {selected&&snapshot?.chat&&<div className="chat-mounted" hidden={pane!=="chat"}>
         <ChatPanel key={selected.agent_id+":"+snapshot.chat.selected_conversation_id+":"+snapshot.chat.erasure_sequence} agentId={selected.agent_id} agentName={selected.name} chat={snapshot.chat}
-          live={snapshot.live_runs} provider={snapshot.provider} search={snapshot.search} disabled={disabled} execute={act} read={send} openProvider={openProvider} openMemory={()=>{setMemoryView("processing");navigate("memory");}} openTasks={openTasks} newConversation={newConversation} scheduler={snapshot.scheduler} goals={snapshot.goals??[]} goalSeedId={goalSeed?.agent_id===selected.agent_id&&goalSeed.conversation_id===snapshot.chat.selected_conversation_id?goalSeed.goal_id:null} sequence={snapshot.sequence} prepareWork={v=>{setWorkSeed(v);openTasks();}} prepareLearn={(task_id,run_id)=>{setLearnSeed({task_id,run_id});openTasks();}} locateMessage={locateMessage} workRequest={focusConversation===snapshot.chat.selected_conversation_id?workRequest:0} workPanel={pane==='chat'?<><div className="work-expand"><button className="text-button" id="all-items-overview" onClick={()=>navigate('tasks')}>所有事项 / 展开详情 ↗</button></div>{taskPanel(true)}</>:null}/></div>}
+          live={snapshot.live_runs} provider={snapshot.provider} search={snapshot.search} disabled={disabled} execute={act} read={send} openProvider={openProvider} openMemory={()=>{setMemoryView("processing");navigate("memory");}} openTasks={openTasks} newConversation={newConversation} scheduler={snapshot.scheduler} goals={snapshot.goals??[]} goalSeedId={goalSeed?.agent_id===selected.agent_id&&goalSeed.conversation_id===snapshot.chat.selected_conversation_id?goalSeed.goal_id:null} sequence={snapshot.sequence} prepareWork={v=>{setWorkSeed(v);openTasks();}} prepareLearn={(task_id,run_id)=>{setLearnSeed({task_id,run_id});openTasks();}} locateMessage={locateMessage} workRequest={focusConversation===snapshot.chat.selected_conversation_id?workRequest:0} workPanel={pane==='chat'?(view)=><>{taskPanel(true,view)}</>:undefined}/></div>}
       </div>
     </div>
     <Modal open={agentMenu} close={()=>setAgentMenu(false)} title="你的 Agents" id="agents-dialog">
@@ -262,16 +286,17 @@ function App() {
         <div className="actions"><button id="create-submit" disabled={disabled}>{busy?"正在创建…":"创建并打开"}</button><button type="button" className="secondary" onClick={()=>setCreating(false)}>取消</button></div>
       </form>
     </Modal>
-    <Modal open={settings} close={()=>setSettings(false)} title="设置" id="settings-dialog">
-      <div className="settings-layout"><nav className="settings-nav" aria-label="设置分类">{([['persona','身份与 Persona'],['provider','模型与连接'],['voice','语音'],['memory','记忆与召回'],['proactivity','主动帮助'],['runtime','Presence 与运行']] as const).map(([tab,label])=><button key={tab} id={"settings-"+tab} className={settingsTab===tab?"selected":""} aria-current={settingsTab===tab?"page":undefined} onClick={()=>setSettingsTab(tab)}><Icon name={{persona:'identity',provider:'provider',voice:'voice',memory:'memory',proactivity:'proactivity',runtime:'presence'}[tab]}/>{label}</button>)}</nav><div className="settings-content"><p className="settings-scope"><Icon name="lock"/>{settingsTab==="persona"?"当前 Agent · "+(selected?.name??"未选择"):["provider","voice","runtime"].includes(settingsTab)?"共享 Host 配置":"当前 Agent 策略 · Host 管理出站授权"}</p>
-      <div hidden={settingsTab!=="persona"}>{selected?<PersonaEditor key={selected.agent_id} agent={selected} disabled={disabled} save={(draft,revision)=>act<Agent>({...envelope(),type:"EditPersona",agent_id:selected.agent_id,expected_revision:revision,payload:{persona_id:selected.persona_id,...draft}},false)}/>:<p>创建 Agent 后即可编辑 Persona。</p>}</div>
-      <div hidden={settingsTab!=="provider"}>{snapshot&&<ProviderSettings provider={snapshot.provider} disabled={disabled} execute={act} storeError={snapshot.provider_store_error}/>}</div>
-      <div hidden={settingsTab!=="memory"}>{selected&&snapshot&&<MemorySettings key={selected.agent_id} agentId={selected.agent_id} provider={snapshot.provider} extraction={snapshot.extraction??{}} embedding={snapshot.embedding??{}} sequence={snapshot.sequence} disabled={disabled} execute={act} read={send}/>}</div>
+    <SettingsWorkspace open={settings} page={settingsTab} change={setSettingsTab} close={()=>setSettings(false)}>
+      <p className="settings-scope"><Icon name="lock"/>{['persona','memory','proactivity'].includes(settingsTab)?"当前 Agent · "+(selected?.name??"未选择")+' · 出站授权由 Host 管理':settingsTab==="permissions"?"当前 Agent 与共享 Host 用途 · 按项目分别管理":"共享 Host 配置"}</p>
+      <div hidden={settingsTab!=="persona"}>{selected?<PersonaEditor key={selected.agent_id} agent={selected} disabled={disabled} save={(draft,revision)=>act<Agent>({...envelope(),type:"EditPersona",agent_id:selected.agent_id,expected_revision:revision,payload:{persona_id:selected.persona_id,...draft}},false)}/>:<p>创建 Agent 后即可编辑身份与表达。</p>}</div>
+      <div hidden={settingsTab!=="provider"}>{snapshot&&<><ProviderSettings provider={snapshot.provider} disabled={disabled} execute={act} storeError={snapshot.provider_store_error}/><SearchSettings search={snapshot.search} disabled={disabled} execute={act}/></>}</div>
+      <div hidden={settingsTab!=="memory"}>{selected&&snapshot&&<><MemorySettings key={selected.agent_id} agentId={selected.agent_id} provider={snapshot.provider} extraction={snapshot.extraction??{}} embedding={snapshot.embedding??{}} sequence={snapshot.sequence} disabled={disabled} execute={act} read={send}/><div className="settings-links"><button className="text-button" onClick={()=>{setMemoryView('memories');navigate('memory');}}>查看与审核记忆 ↗</button><button className="text-button" onClick={()=>{setMemoryView('processing');navigate('memory');}}>记忆处理记录 ↗</button></div><SettingSection title="交流策略与学习" description="审阅当前 Agent 的交流策略与实际评估记录。"><ConversationLearningPanel agentId={selected.agent_id} provider={snapshot.provider} sequence={snapshot.sequence} disabled={disabled} read={send} execute={act}/></SettingSection><button className="text-button" onClick={openWorkMethods}>工作方法与评估记录 ↗</button></>}</div>
       <div hidden={settingsTab!=="proactivity"}>{selected&&snapshot&&<ProactivitySettings key={selected.agent_id} agentId={selected.agent_id} value={snapshot.proactivity} goals={snapshot.goals??[]} provider={snapshot.provider} disabled={disabled} read={send} execute={act}/>}</div>
-      <div hidden={settingsTab!=="voice"}><SpeechSettings/></div>
-      <div hidden={settingsTab!=="runtime"} className="settings-section"><PresenceSettings/><h2>运行与窗口</h2><p>当前状态：{status}</p><p className="muted">关闭主窗口会收起到系统托盘。</p><details><summary>暂停、退出与数据保存说明</summary><p>暂停只影响后台工作，前台对话仍可继续；停止回复使用对话中的独立按钮。身份、对话与记忆保存在本机。</p></details><div className="actions"><button className="secondary" onClick={()=>void invoke("hide_main")}>收起到托盘</button><button className="secondary" onClick={()=>void invoke("quit_app")}>退出 Runtime</button></div><p className="muted small">记忆提取受独立用途与调用预算限制。身份、对话与记忆保存在本机。</p></div>
-      {error&&<p className="error" role="alert">{error}</p>}</div></div>
-    </Modal>
+      <div hidden={settingsTab!=="voice"}><SpeechSettings/><SettingSection title="桌面陪伴" description="通过桌面 Orb 快速交流，开关立即保存。"><PresenceSettings/></SettingSection></div>
+      <div hidden={settingsTab!=="permissions"}>{snapshot&&<PermissionsOverview active={settings&&settingsTab==="permissions"} snapshot={snapshot} openPage={openSettingsPage} openWork={allItems}/>}</div>
+      <div hidden={settingsTab!=="runtime"} className="settings-section"><h2>本地数据与运行</h2><p className="muted">身份、对话与记忆保存在这台设备上。</p><div className="settings-management-row"><div><h3>记忆与来源管理</h3><p>查看、纠正、遗忘或删除，操作时确认具体范围。</p></div><button className="secondary" onClick={()=>{setMemoryView('memories');navigate('memory');}}>管理记忆</button></div><div className="settings-management-row"><div><h3>事项与执行记录</h3><p>目标、任务与时间约定分别保留实际状态。</p></div><button className="secondary" onClick={allItems}>查看事项</button></div><h3>运行与窗口</h3><p>当前状态：{status}</p><p className="muted">关闭主窗口会收起到系统托盘。</p><details><summary>暂停、退出与数据保存说明</summary><p>暂停只影响后台工作，前台对话仍可继续；停止回复使用对话中的独立按钮。退出 Runtime 后后台工作停止。</p></details><div className="actions"><button className="secondary" onClick={()=>void invoke("hide_main")}>收起到托盘</button><button className="secondary" onClick={()=>void invoke("quit_app")}>退出 Runtime</button></div><details><summary>Host 与 Core 状态</summary><p>Host：{host?.status??'未连接'} · Core PID：{host?.core_pid??'无'} · 重启次数：{host?.restart_count??0}</p>{host?.error&&<p className="error" role="alert">{host.error}</p>}</details></div>
+      {error&&<p className="error" role="alert">{error}</p>}
+    </SettingsWorkspace>
   </main>;
 }
 createRoot(document.getElementById("root")!).render(getCurrentWindow().label==='presence'?<PresenceApp/>:<App/>);

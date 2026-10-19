@@ -106,6 +106,10 @@ pub fn validate(payload: &Value, old: &Value) -> Result<Value, String> {
         "chat_allowed":allowed,"max_input_tokens":input,"max_output_tokens":output,
         "idle_timeout_seconds":30,"total_timeout_seconds":120,"automatic_retries":0,
         "revision":old["revision"].as_u64().unwrap_or(0)+1});
+    for flag in ["chat_input_unlimited","chat_output_unlimited"] {
+        next[flag] = json!(payload.get(flag).and_then(Value::as_bool)
+            .unwrap_or_else(||old[flag].as_bool().unwrap_or(false)));
+    }
     next["extraction"] = old["extraction"].clone();
     next["embedding"] = old["embedding"].clone();
     next["selection"] = old["selection"].clone();
@@ -120,7 +124,7 @@ pub fn validate(payload: &Value, old: &Value) -> Result<Value, String> {
             }
             next["selection"] = json!({"base_url":base,"model":model,"api_key":key,
                 "dialect":"openai-compatible","profile":next["profile"],"selection_allowed":true,
-                "max_input_tokens":32768,"max_output_tokens":4096,"max_calls":calls,
+                "max_input_tokens":32768,"max_output_tokens":4096,"max_calls":calls,"calls_unlimited":payload["selection_calls_unlimited"]==true,
                 "grant_id":uuid::Uuid::new_v4().to_string(),"revision":next["revision"],
                 "data_categories":["current recall query","current valid Memory candidates"],
                 "scope":"same explicit Chat destination/model/credential, isolated per Agent; relevance selection only",
@@ -168,6 +172,8 @@ pub fn validate(payload: &Value, old: &Value) -> Result<Value, String> {
         config["embedding_allowed"] = json!(allowed);
         config["dimensions"] = json!(1024);
         config["max_calls"] = json!(calls);
+        config["calls_unlimited"] = json!(e["calls_unlimited"]==true);
+        config["input_unlimited"] = json!(e["input_unlimited"]==true);
         config["max_total_input_tokens"] = json!(total);
         config["grant_id"] = json!(uuid::Uuid::new_v4().to_string());
         config["revision"] = next["revision"].clone();
@@ -192,7 +198,7 @@ pub fn validate(payload: &Value, old: &Value) -> Result<Value, String> {
             next["extraction"] = json!({"base_url":base,"model":model,"api_key":key,
                 "dialect":"openai-compatible","profile":next["profile"],
                 "extraction_allowed":true,"max_input_tokens":4096,"max_output_tokens":1024,
-                "max_calls":calls,"grant_id":uuid::Uuid::new_v4().to_string(),
+                "max_calls":calls,"calls_unlimited":payload["extraction_calls_unlimited"]==true,"grant_id":uuid::Uuid::new_v4().to_string(),
                 "data_categories":["completed conversation turn","bounded current memories"],
                 "scope":"local current-user Agents; pending and future completed turns",
                 "idle_timeout_seconds":30,"total_timeout_seconds":120,"automatic_retries":0,

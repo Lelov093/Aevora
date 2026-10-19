@@ -65,7 +65,7 @@ def reply_prefix(raw):
     return ''.join(output)
 
 
-def decode(raw):
+def decode(raw, *, max_reply_chars=32768):
     def unique(pairs):
         result = {}
         for k, v in pairs:
@@ -78,7 +78,7 @@ def decode(raw):
         if not isinstance(value, dict) or set(value) != {'reply', 'suggestion'}:
             raise ValueError()
         text = value['reply']
-        if not isinstance(text, str) or not text.strip() or len(text) > 32768:
+        if not isinstance(text, str) or not text.strip() or (max_reply_chars is not None and len(text) > max_reply_chars):
             raise ValueError()
         suggestion = value['suggestion']
         if suggestion is not None:
@@ -111,7 +111,7 @@ class WorkRepository:
         return row[0] if row else ''
 
     def capture(self, db, run, raw, completed):
-        suggestion = decode(raw)[1] if completed else None
+        suggestion = decode(raw, max_reply_chars=None if run['context'].get('chat_output_unlimited') else 32768)[1] if completed else None
         if suggestion and suggestion.get('skill_id'):
             ref = next((r for r in run['context'].get('available_work_methods', []) if r['proposal_id'] == suggestion['skill_id']), run['context'].get('method_context'))
             if not ref or ref['proposal_id'] != suggestion['skill_id']:

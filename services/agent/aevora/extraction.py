@@ -144,7 +144,7 @@ class ExtractionRuntime:
 
     def allowed(self):
         c = self.gateway.config
-        return bool(c.get("extraction_allowed") and c.get("api_key") and c.get("grant_id") and c.get("max_calls", 0) > 0)
+        return bool(c.get("extraction_allowed") and c.get("api_key") and c.get("grant_id") and (c.get("calls_unlimited") is True or c.get("max_calls", 0) > 0))
 
     def public(self):
         c = self.gateway.public()
@@ -169,7 +169,7 @@ class ExtractionRuntime:
                 return None
             db.execute("INSERT OR IGNORE INTO extraction_grants VALUES (?,0)", (config["grant_id"],))
             calls = db.execute("SELECT calls_started FROM extraction_grants WHERE grant_id=?", (config["grant_id"],)).fetchone()[0]
-            if calls >= config["max_calls"]:
+            if config.get("calls_unlimited") is not True and calls >= config["max_calls"]:
                 return None
             row = db.execute("""SELECT job_id,agent_id FROM memory_jobs WHERE state='Pending'
                 AND (next_retry_at IS NULL OR next_retry_at<=?) AND group_attempt<3 ORDER BY created_at,job_id LIMIT 1""", (now(),)).fetchone()

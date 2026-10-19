@@ -84,14 +84,16 @@ class ConversationRepository:
     def list(self, db, agent_id, query=""):
         self.store.identity.agent(db, agent_id)
         query = query.strip()
-        return [dict(r) for r in db.execute("""SELECT c.*,
-            CASE WHEN c.title='新对话' THEN COALESCE((SELECT substr(m.content,1,48) FROM messages m
+        return [dict(r) for r in db.execute("""SELECT c.*, o.group_id, COALESCE(o.pinned,0) AS pinned, g.name AS group_name,
+            CASE WHEN o.custom_title IS NOT NULL THEN o.custom_title WHEN c.title='新对话' THEN COALESCE((SELECT substr(m.content,1,48) FROM messages m
                 WHERE m.conversation_id=c.conversation_id AND m.agent_id=c.agent_id AND m.role='user'
                 ORDER BY m.sequence LIMIT 1),c.title) ELSE c.title END AS display_title,
             (SELECT substr(m.content, max(1,instr(lower(m.content),lower(?))-20),100) FROM messages m
                 WHERE m.conversation_id=c.conversation_id AND m.agent_id=c.agent_id
                 AND instr(lower(m.content),lower(?))>0 ORDER BY m.sequence LIMIT 1) AS match_preview
-            FROM conversations c WHERE c.agent_id=? AND c.status<>'Deleted' AND (?='' OR instr(lower(c.title),lower(?))>0
+            FROM conversations c LEFT JOIN conversation_organization o ON o.conversation_id=c.conversation_id AND o.agent_id=c.agent_id
+            LEFT JOIN conversation_groups g ON g.group_id=o.group_id AND g.agent_id=c.agent_id
+            WHERE c.agent_id=? AND c.status<>'Deleted' AND (?='' OR instr(lower(COALESCE(o.custom_title,c.title)),lower(?))>0
                 OR EXISTS(SELECT 1 FROM messages m WHERE m.conversation_id=c.conversation_id
                     AND m.agent_id=c.agent_id AND instr(lower(m.content),lower(?))>0))
             ORDER BY c.updated_at DESC,c.conversation_id""", (query,query,agent_id,query,query,query))]
@@ -148,7 +150,7 @@ class ConversationRepository:
             (agent_id, cid))]
         erasure = db.execute("SELECT COALESCE(MAX(sequence),0) FROM events WHERE agent_id=? AND type IN ('MemoryDeleted','MemoryForgotten','ConversationDeleted','DeleteGoal','MethodContextErased','DeleteMethod')", (agent_id,)).fetchone()[0]
         work = messages.get('work', [])
-        return {"conversations": conversations, "selected_conversation_id": cid, **messages, "runs": runs, "memory_jobs": jobs, "erasure_sequence": erasure, 'work': work, 'resume_goal_id': self.target(db, agent_id, cid)['resume_goal_id'] if cid else None}
+        return {**self.store.conversation_groups.view(db, agent_id), "conversations": conversations, "selected_conversation_id": cid, **messages, "runs": runs, "memory_jobs": jobs, "erasure_sequence": erasure, 'work': work, 'resume_goal_id': self.target(db, agent_id, cid)['resume_goal_id'] if cid else None}
 
     def event(self, db, command_id, kind, agent_id, cid, rid, payload, actor="core"):
         db.execute("""INSERT INTO events(event_id,type,schema_version,actor,timestamp,command_id,agent_id,
@@ -166,6 +168,8 @@ class ConversationRepository:
             db.execute("INSERT INTO conversations(conversation_id,agent_id,title,status,created_at,updated_at) VALUES (?,?,?,'Active',?,?)", (cid, aid, payload.get("title", "新对话"), time, time))
             if gid:
                 db.execute("UPDATE conversations SET resume_goal_id=? WHERE conversation_id=?", (gid, cid))
+            if payload.get("group_id") is not None:
+                self.store.conversation_groups.assign_new(db, aid, cid, payload["group_id"])
             self.event(db, command["command_id"], "ConversationCreated", aid, cid, None, {}, "user")
         else:
             cid = payload["conversation_id"]
@@ -196,6 +200,8 @@ class ConversationRepository:
             text = command["payload"]["text"].strip()
             if not text:
                 raise DomainError("ValidationError", "Message cannot be blank")
+            if config.get("chat_input_unlimited") is not True and len(text) > 12000:
+                raise DomainError("ValidationError", "Message exceeds the finite local length limit")
             retry = command["payload"].get("retry_of")
             mid = None
             before_sequence = None
@@ -227,7 +233,7 @@ class ConversationRepository:
             model_messages, refs = build_context(db, profile, cid, text, config, before_sequence,
                                                 input_timezone=self.store.input_timezone, goal_projection=projection,
                                                 work_suggestions=command['payload'].get('work_suggestions', False), work_projection=work_projection,
-                                                interaction_refs=trial_refs)
+                                                interaction_refs=trial_refs, chat_limits=True)
             if trial:
                 refs['interaction_trial'] = trial
             if command['payload'].get('work_suggestions'):

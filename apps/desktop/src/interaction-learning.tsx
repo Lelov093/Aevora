@@ -11,13 +11,13 @@ const envelope=()=>({protocol_version:1 as const,command_id:crypto.randomUUID()}
 const categories=[['Strategy','交流与协作策略'],['Preference','个人偏好'],['FactCorrection','事实纠正'],['TemporaryState','本次临时状态']] as const;
 const explain=(e:unknown)=>{try{return JSON.parse(String(e)).error?.message??String(e);}catch{return String(e);}};
 
-export function InteractionLearningDialog({agentId,runId,provider,disabled,read,execute,close,created,remember}:{agentId:string;runId:string;provider:Provider;disabled:boolean;read:Execute;execute:Execute;close:()=>void;created?:(id:string)=>void;remember?:(kind:UnderstandingKind,content:string)=>void}){
+export function InteractionLearningDialog({agentId,runId,provider,disabled,read,execute,close,created,remember,initialNote}:{initialNote?:string;agentId:string;runId:string;provider:Provider;disabled:boolean;read:Execute;execute:Execute;close:()=>void;created?:(id:string)=>void;remember?:(kind:UnderstandingKind,content:string)=>void}){
  const [experience,setExperience]=useState<Experience|null>(null),[methods,setMethods]=useState<Proposal[]>([]);
- const [category,setCategory]=useState<InteractionFeedback['category']>('Strategy'),[note,setNote]=useState(''),[baseId,setBaseId]=useState('');
+ const [category,setCategory]=useState<InteractionFeedback['category']>('Strategy'),[note,setNote]=useState(initialNote??''),[baseId,setBaseId]=useState('');
  const [objective,setObjective]=useState(''),[criteria,setCriteria]=useState('相关情境中的表现有改善\n明确要求解决问题时仍能提供实际帮助\n无关情境不机械套用'),[consent,setConsent]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),[deleteMethods,setDeleteMethods]=useState(false);
  const base=methods.find(m=>m.proposal_id===baseId);
- async function load(){const [e,m]=await Promise.all([read<Experience>({...envelope(),type:'GetInteractionExperience',agent_id:agentId,payload:{run_id:runId}}),read<Proposal[]>({...envelope(),type:'ListMethods',agent_id:agentId,payload:{}})]);setExperience(e);setMethods(m);if(e.feedback&&!e.feedback.deleted){setCategory(e.feedback.category);setNote(e.feedback.note);}setConsent(false);}
+ async function load(){const [e,m]=await Promise.all([read<Experience>({...envelope(),type:'GetInteractionExperience',agent_id:agentId,payload:{run_id:runId}}),read<Proposal[]>({...envelope(),type:'ListMethods',agent_id:agentId,payload:{}})]);setExperience(e);setMethods(m);if(e.feedback&&!e.feedback.deleted){setCategory(e.feedback.category);setNote(e.feedback.note);}else setNote(initialNote??'');setConsent(false);}
  useEffect(()=>{void load().catch(e=>setError(explain(e)));},[agentId,runId]);
  useEffect(()=>setConsent(false),[provider.base_url,provider.model,provider.revision]);
  async function save(remove=false){setBusy(true);setError('');try{const f=await execute<InteractionFeedback>(remove?{...envelope(),type:'DeleteInteractionFeedback',agent_id:agentId,expected_revision:experience?.feedback?.revision??0,payload:{run_id:runId,delete_methods:deleteMethods}}:{...envelope(),type:'SaveInteractionFeedback',agent_id:agentId,expected_revision:experience?.feedback?.revision??0,payload:{run_id:runId,category,note}});setExperience(old=>old?{...old,feedback:f}:old);setSaved(!remove);setConsent(false);if(remove)setNote('');}catch(e){setError(explain(e));}finally{setBusy(false);}}

@@ -30,7 +30,7 @@ def request_room(context, limits, config, metadata, elapsed_ms):
         spent = max(0, spent - reserve) + actual
     tools = limits.get('tools', {})
     return (context['decisions_started'] < limits['max_decisions']
-            and spent + reserve <= tools.get('max_total_tokens', limits['max_decisions'] * reserve)
+            and (tools.get('tokens_unlimited') is True or spent + reserve <= tools.get('max_total_tokens', limits['max_decisions'] * reserve))
             and context.get('active_ms', 0) + elapsed_ms < tools.get('execution_seconds', 900) * 1000)
 
 
@@ -175,7 +175,7 @@ class AgentRuntime:
                 repo.state(db, row, 'Failed', 'ExecutionTimeLimit')
                 return
             reserve = config['max_input_tokens'] + config['max_output_tokens']
-            if context.get('token_spent_or_reserved', 0) + reserve > tools.get('max_total_tokens', limits['max_decisions'] * reserve):
+            if tools.get('tokens_unlimited') is not True and context.get('token_spent_or_reserved', 0) + reserve > tools.get('max_total_tokens', limits['max_decisions'] * reserve):
                 repo.state(db, row, 'Failed', 'TaskTokenBudget')
                 return
             context['token_spent_or_reserved'] = context.get('token_spent_or_reserved', 0) + reserve

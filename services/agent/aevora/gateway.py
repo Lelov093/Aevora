@@ -40,7 +40,9 @@ class ModelGateway:
     async def stream(self, config, messages, consume, metadata, *, response_format=None):
         began = time.monotonic()
         payload = {"model": config["model"], "messages": messages, "stream": True,
-                   "stream_options": {"include_usage": True}, "max_tokens": config["max_output_tokens"]}
+                   "stream_options": {"include_usage": True}}
+        if config.get("output_unlimited") is not True:
+            payload["max_tokens"] = config["max_output_tokens"]
         if response_format is not None:
             if response_format != {"type": "json_object"}:
                 raise DomainError("ValidationError", "Unsupported structured output mode")

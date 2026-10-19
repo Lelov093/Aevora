@@ -137,7 +137,12 @@
         "PauseGoalExecution",
         "ResumeGoalExecution",
         "RevokeGoalExecution",
-        "RenewGoalExecution"
+        "RenewGoalExecution",
+        "CreateConversationGroup",
+        "UpdateConversationGroup",
+        "DeleteConversationGroup",
+        "OrganizeConversations",
+        "RenameConversation"
       ]
     },
     "payload": {
@@ -236,6 +241,11 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 64
+        },
+        "group_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
         }
       },
       "required": []
@@ -283,8 +293,7 @@
         },
         "text": {
           "type": "string",
-          "minLength": 1,
-          "maxLength": 12000
+          "minLength": 1
         },
         "retry_of": {
           "type": "string",
@@ -418,6 +427,18 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 1000
+        },
+        "extraction_calls_unlimited": {
+          "type": "boolean"
+        },
+        "selection_calls_unlimited": {
+          "type": "boolean"
+        },
+        "chat_input_unlimited": {
+          "type": "boolean"
+        },
+        "chat_output_unlimited": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -664,6 +685,12 @@
           "type": "integer",
           "minimum": 512,
           "maximum": 1000000
+        },
+        "calls_unlimited": {
+          "type": "boolean"
+        },
+        "input_unlimited": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -2260,6 +2287,12 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 1440
+        },
+        "calls_unlimited": {
+          "type": "boolean"
+        },
+        "notifications_unlimited": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -2986,6 +3019,9 @@
           "type": "integer",
           "minimum": 64,
           "maximum": 1000000
+        },
+        "tokens_unlimited": {
+          "type": "boolean"
         }
       }
     },
@@ -3172,6 +3208,12 @@
         "conversation_id": {
           "type": "string",
           "format": "uuid"
+        },
+        "calls_unlimited": {
+          "type": "boolean"
+        },
+        "tokens_unlimited": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -3343,6 +3385,120 @@
         "allow_outbound"
       ],
       "additionalProperties": false
+    },
+    "CreateConversationGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "UpdateConversationGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "group_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "collapsed": {
+          "type": "boolean"
+        },
+        "direction": {
+          "enum": [
+            "up",
+            "down"
+          ]
+        }
+      },
+      "required": [
+        "group_id"
+      ]
+    },
+    "DeleteConversationGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "group_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "group_id"
+      ]
+    },
+    "OrganizeConversations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conversation_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "group_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pinned": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "conversation_ids"
+      ]
+    },
+    "RenameConversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "conversation_id",
+        "title"
+      ],
+      "properties": {
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      }
     }
   },
   "allOf": [
@@ -5733,6 +5889,106 @@
         "properties": {
           "payload": {
             "$ref": "#/$defs/RenewGoalExecution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CreateConversationGroup"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/CreateConversationGroup"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "UpdateConversationGroup"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/UpdateConversationGroup"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DeleteConversationGroup"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/DeleteConversationGroup"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "OrganizeConversations"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/OrganizeConversations"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RenameConversation"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "agent_id",
+          "expected_revision"
+        ],
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/RenameConversation"
           }
         }
       }
