@@ -1,0 +1,19 @@
+{
+  "name": "@deepseek-ai/node-addon-system-workspace",
+  "version": "0.1.2",
+  "private": true,
+  "type": "module",
+  "license": "BSD-3-Clause",
+  "packageManager": "pnpm@11.28.5",
+  "scripts": {
+    "build": "pnpm build:ts",
+    "build:ts": "tsc -b",
+    "build:native": "tsx ./scripts/build.ts"
+  },
+  "devDependencies": {
+    "@deepseek-ai/node-addon-system": "workspace:~",
+    "@types/node": "^26.4.1",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3"
+  }
+}
