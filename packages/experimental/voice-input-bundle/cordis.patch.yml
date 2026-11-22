@@ -1,4 +1,8 @@
 - insert:
+    - id: voice-turns
+      name: '@deepseek-ai/dsh-experimental-voice-turns'
+      config:
+        parallel: true
     - id: speech-to-text
       name: '@deepseek-ai/dsh-experimental-speech-to-text'
       config:
@@ -7,6 +11,8 @@
       name: '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice'
       config:
         dataRoot: !!js dshHomePath('speech-to-text', 'sensevoice')
+    - id: speech-to-text-qwen
+      name: '@deepseek-ai/dsh-experimental-speech-to-text-qwen'
     - id: api-speech-to-text
       name: '@deepseek-ai/dsh-experimental-api-speech-to-text'
     - id: ui-voice-input

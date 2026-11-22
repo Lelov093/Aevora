@@ -88,6 +88,5 @@
     "@deepseek-ai/dsh-util-time": "workspace:*",
     "@deepseek-ai/dsh-workspace": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~"
-  },
-  "scripts": {}
+  }
 }

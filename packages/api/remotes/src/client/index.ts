@@ -1,6 +1,8 @@
 /** Platform-neutral assembly of generated Host Remote contributions. */
 
 import type { Context } from '@deepseek-ai/cordis'
+import ttsRemote from '@deepseek-ai/dsh-api-text-to-speech/remote'
+export type {} from '@deepseek-ai/dsh-api-text-to-speech/remote'
 import productAnalyticsRemote from '@deepseek-ai/dsh-client-product-analytics/remote'
 export type {} from '@deepseek-ai/dsh-client-product-analytics/remote'
 import agentPresetsRemote from '@deepseek-ai/dsh-agent-preset-registry/remote'
@@ -187,7 +189,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const disposers: Array<() => Promise<void>> = []
   try {
     for (const contribution of [
-      productAnalyticsRemote, agentPresetsRemote, commandsRemote, settingsControllerRemote, accountRemote,
+      ttsRemote, productAnalyticsRemote, agentPresetsRemote, commandsRemote, settingsControllerRemote, accountRemote,
       goalsRemote, llmRemote, dynamicRemote, scheduleRemote,
       pluginInventoryRemote, pluginManagerRemote, pluginMarketRemote, pluginRegistryProbeRemote,
       messageFeedbackRemote, sessionFeedbackRemote,

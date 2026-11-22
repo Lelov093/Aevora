@@ -35,6 +35,5 @@
   },
   "dependencies": {
     "mime": "^4.1.1"
-  },
-  "scripts": {}
+  }
 }

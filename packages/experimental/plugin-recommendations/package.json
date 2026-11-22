@@ -71,6 +71,5 @@
     "lib/typert.remote-client.js",
     "lib/typert.remote-client.d.ts"
   ],
-  "icon": "./icon.svg",
-  "scripts": {}
+  "icon": "./icon.svg"
 }

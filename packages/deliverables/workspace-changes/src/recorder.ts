@@ -17,6 +17,8 @@ export interface RecorderEnvironment {
   git: Promise<GitRunner | null>
   /** Directory that receives each Session's temporary directory. */
   tempRoot: string
+  /** Validate and prepare the optional managed parent for this Session's artifacts. */
+  prepareTempRoot?: () => Promise<string>
   /** Maximum files carried by one summary. */
   maxFiles: number
   /** Inclusive byte cap on a captured copy and on a snapshot blob read for a comparison. */
@@ -267,7 +269,8 @@ export class TurnRecorder {
 
   /** This Session's temporary directory, created on first use. */
   private scratchDir(): Promise<string> {
-    this.scratch ??= mkdtemp(join(this.env.tempRoot, 'dsh-workspace-changes-'))
+    this.scratch ??= (this.env.prepareTempRoot?.() ?? Promise.resolve(this.env.tempRoot))
+      .then(root => mkdtemp(join(root, 'dsh-workspace-changes-')))
     return this.scratch
   }
 

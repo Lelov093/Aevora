@@ -50,7 +50,8 @@
     "micromark-util-sanitize-uri": "^2.0.1",
     "simple-icons": "16.31.0",
     "@deepseek-ai/dsh-util-file-drag": "workspace:*",
-    "@tanstack/react-virtual": "3.14.10"
+    "@tanstack/react-virtual": "3.14.10",
+    "@deepseek-ai/dsh-util-crypto": "workspace:*"
   },
   "files": [
     "lib/index.js",
@@ -59,6 +60,5 @@
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"
-  },
-  "scripts": {}
+  }
 }

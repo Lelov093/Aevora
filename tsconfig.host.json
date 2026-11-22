@@ -5,6 +5,21 @@
     "rewriteRelativeImportExtensions": false
   },
   "include": [],
+  "exclude": [
+    "apps/desktop/tests/keyboard.spec.ts",
+    "packages/client/*/src/**",
+    "benchmarks/**/*.client.ts",
+    "benchmarks/**/*.client.tsx",
+    "packages/*/*/tests/**/*.client.ts",
+    "packages/*/*/tests/**/*.client.tsx",
+    "packages/*/*/tests/**/*.client.spec.ts",
+    "packages/*/*/tests/**/*.client.spec.tsx",
+    "packages/client/tsdown.client.ts",
+    "scripts/*.client.spec.ts",
+    "scripts/client-bundle-css.spec.ts",
+    "packages/typert/generator/tests/fixtures/**",
+    "scripts/client-bundle-purity.spec.ts"
+  ],
   "references": [
     {
       "path": "./packages/experimental/action-cards"
@@ -17,6 +32,15 @@
     },
     {
       "path": "./packages/experimental/personalized-recommendations"
+    },
+    {
+      "path": "./packages/experimental/memory/tsconfig.host.json"
+    },
+    {
+      "path": "./packages/experimental/aevora-identity/tsconfig.host.json"
+    },
+    {
+      "path": "./packages/experimental/aevora-control/tsconfig.host.json"
     },
     {
       "path": "./packages/experimental/client-ui-cot-translation/tsconfig.host.json"
@@ -49,7 +73,16 @@
       "path": "./packages/telemetry/otel"
     },
     {
+      "path": "./packages/experimental/voice-turns"
+    },
+    {
       "path": "./packages/experimental/speech-to-text"
+    },
+    {
+      "path": "./packages/experimental/speech-to-text-qwen"
+    },
+    {
+      "path": "./packages/experimental/client-ui-voice-input/tsconfig.host.json"
     },
     {
       "path": "./packages/experimental/speech-to-text-sensevoice"
@@ -679,6 +712,9 @@
       "path": "./packages/web/web-search-perplexity"
     },
     {
+      "path": "./packages/web/web-search-tavily"
+    },
+    {
       "path": "./packages/web/web-search-deepseek"
     },
     {
@@ -917,7 +953,15 @@
     },
     {
       "path": "./apps/desktop/tsconfig.host.json"
+    },
+    {
+      "path": "./packages/speech/text-to-speech"
+    },
+    {
+      "path": "./packages/speech/text-to-speech-qwen"
+    },
+    {
+      "path": "./packages/api/text-to-speech"
     }
-  ],
-  "files": []
+  ]
 }

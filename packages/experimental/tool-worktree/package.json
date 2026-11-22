@@ -65,6 +65,5 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-experimental-worktree": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

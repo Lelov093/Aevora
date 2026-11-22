@@ -256,6 +256,7 @@ export class Session implements SessionFace {
     mode: 'queue' | 'steer',
     signal?: AbortSignal,
     requestId?: SessionRequestId,
+    interruptAt?: SessionSeq,
   ): Promise<RemoteResult<{ accepted: true }>> {
     this.promptError = null
     this.lastAgentError = null
@@ -273,8 +274,12 @@ export class Session implements SessionFace {
         sessionId: this.sessionId,
         mode,
         content,
+        ...(interruptAt === undefined ? {} : { interruptAt }),
         clientTimeZone,
       }, signal)
+    } else if (interruptAt !== undefined) {
+      result = { ok: false, error: new RemoteError('session/agent-busy',
+        'Conditional prompt interruption is unavailable for subagent continuation', { reason: 'SUBAGENT_INTERRUPTION_UNSUPPORTED' }) }
     } else if (content.some(part => part.type === 'file')) {
       result = {
         ok: false,

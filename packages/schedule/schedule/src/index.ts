@@ -367,6 +367,21 @@ export class ScheduleService extends TypertRemoteService {
   }
 
   /**
+   * Remove all task states and delivery receipts owned by durably accepted deletion targets.
+   * @param ids - Session IDs accepted by the managed journal.
+   */
+  removeDeletedSessions(ids: readonly SessionId[]): Promise<void> {
+    return this.serialize(async () => {
+      const journal = this.ctx.get('sessionDeletionJournal')
+      if (ids.some(id => !journal?.blocks(id))) throw new Error('Schedule cleanup requires accepted Session deletion')
+      const scope = new Set(ids)
+      const tasks = (await this.getDomain()).table('tasks')
+      const matching = [...tasks.entries()].filter(([, task]) => scope.has(task.sessionId))
+      await this.removeRows(matching.map(([id]) => id), 'Session deletion schedule cleanup failed', true)
+    })
+  }
+
+  /**
    * Delete every ended Host task, leaving active tasks armed.
    *
    * Ended tasks never schedule another delivery, so the removal changes no pending
@@ -461,6 +476,7 @@ export class ScheduleService extends TypertRemoteService {
    * @returns The stable refusal for a delegated child's Session, or undefined when the Session is eligible.
    */
   private reminderTargetRefusal(sessionId: SessionId): SubagentSessionError | undefined {
+    if (this.ctx.get('sessionDeletionAdmission')?.blocks(sessionId)) throw new Error('Session is unavailable for Schedule')
     const agent = this.ctx.agents.get(sessionId)
     if (agent === undefined || delegationDepthOf(agent) === 0) return undefined
     return {
@@ -531,3 +547,4 @@ export class ScheduleService extends TypertRemoteService {
 }
 
 export default ScheduleService
+import type {} from '@deepseek-ai/dsh-session-persistence/deletion-journal'

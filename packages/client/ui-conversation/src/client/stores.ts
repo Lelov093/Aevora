@@ -7,6 +7,14 @@ import { parseStoredDraft } from './draft.ts'
 
 const CONVERSATION_STORE_KEY = 'dsh.conversation'
 
+/**
+ * Remove the local draft and view preference after permanent deletion.
+ * @param sessionId - Host-confirmed deleted Session.
+ */
+export function clearConversationStorage(sessionId: SessionId): void {
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(`${CONVERSATION_STORE_KEY}.${sessionId}`)
+}
+
 /** Declared write set for the Conversation shell. */
 type ConversationActions = {
   setDraft: (draft: ConversationStoreState, text: DraftInput) => void

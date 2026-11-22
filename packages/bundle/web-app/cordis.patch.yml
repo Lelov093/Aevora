@@ -452,6 +452,22 @@
 
     - id: ui-settings-web-search
       name: '@deepseek-ai/dsh-client-ui-settings-web-search'
+    - id: web-search-exa
+      name: '@deepseek-ai/dsh-web-search-exa'
+    - id: web-search-perplexity
+      name: '@deepseek-ai/dsh-web-search-perplexity'
+    - id: web-search-tavily
+      name: '@deepseek-ai/dsh-web-search-tavily'
+    - id: text-to-speech
+      name: '@deepseek-ai/dsh-text-to-speech'
+      config:
+        defaultProvider: ''
+    - id: text-to-speech-qwen
+      name: '@deepseek-ai/dsh-text-to-speech-qwen'
+    - id: api-text-to-speech
+      name: '@deepseek-ai/dsh-api-text-to-speech'
+    - id: ui-voice
+      name: '@deepseek-ai/dsh-client-ui-voice'
 
     # Plan control: the composer plan seat over the plan projection + /plan channel.
     - id: ui-plan

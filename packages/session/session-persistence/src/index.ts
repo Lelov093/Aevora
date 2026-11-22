@@ -12,6 +12,15 @@ import type { SessionHandle, SessionAccess } from './handle.ts'
 import type { SessionLocation } from './errors.ts'
 import type { SessionPersistenceRevision } from './revision.ts'
 
+export type { DeletionCleanupStep, DeletionFailure, DeletionId } from './deletion-identity.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Managed root admission check shared by Session work entry points. */
+    sessionDeletionAdmission: { blocks(sessionId: SessionId): boolean }
+  }
+}
+
 // Re-export the metadata vocabulary so Consumers import it from the Service Definition.
 export type { SessionHeader } from '@deepseek-ai/dsh-session'
 export { SessionPersistenceRevision } from './revision.ts'

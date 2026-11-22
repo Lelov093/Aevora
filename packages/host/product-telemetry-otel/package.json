@@ -43,6 +43,5 @@
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
     "@deepseek-ai/dsh-app-boot": "workspace:*",
     "@deepseek-ai/dsh-otel": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

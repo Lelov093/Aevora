@@ -39,6 +39,5 @@
     "@deepseek-ai/dsh-scope": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~"
-  },
-  "scripts": {}
+  }
 }

@@ -31,7 +31,7 @@
   }
 }
 
-.section { display: flex; flex-direction: column; gap: 16px; font-size: 13px; line-height: 1.6; color: var(--dsw-alias-label-primary); }
+.section { display: flex; flex-direction: column; max-width: 720px; gap: 12px; font-size: 13px; line-height: 1.6; color: var(--dsw-alias-label-primary); }
 .section h2 { margin: 0; font-size: 16px; font-weight: 500; }
 .section p { margin: 0; }
 .pending { display: grid; gap: 8px; padding: 16px; border: 1px solid var(--dsw-alias-settings-card-stroke); border-radius: var(--dsw-radius-xl); background: var(--dsw-alias-settings-card-fill); }

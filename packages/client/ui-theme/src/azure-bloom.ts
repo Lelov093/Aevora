@@ -1,4 +1,4 @@
-/** Azure Bloom v05 palette and component materials shared by bootstrap and runtime. */
+/** Azure Bloom palette retained as the earlier independent appearance. */
 
 /** Fixed light appearance; system color-scheme changes do not alter it. */
 export const AZURE_BLOOM_TOKENS: Readonly<Record<string, string>> = Object.freeze({

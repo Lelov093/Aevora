@@ -97,6 +97,10 @@
     "@deepseek-ai/dsh-plugin-manager": "workspace:*",
     "@deepseek-ai/dsh-atomic-write": "workspace:*",
     "@deepseek-ai/dsh-agent-preset": "workspace:*",
+    "@deepseek-ai/dsh-experimental-aevora-control": "workspace:*",
+    "@deepseek-ai/dsh-experimental-aevora-identity": "workspace:*",
+    "@deepseek-ai/dsh-experimental-conscious-ocean": "workspace:*",
+    "@deepseek-ai/dsh-experimental-memory": "workspace:*",
     "@deepseek-ai/dsh-experimental-voice-input-bundle": "workspace:*",
     "@deepseek-ai/dsh-experimental-auto-review": "workspace:*",
     "@deepseek-ai/dsh-experimental-cot-translation-bundle": "workspace:*",
@@ -171,6 +175,5 @@
   },
   "engines": {
     "node": ">=24.9.0"
-  },
-  "scripts": {}
+  }
 }

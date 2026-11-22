@@ -68,6 +68,5 @@
     "@deepseek-ai/dsh-tool-jobs": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*"
   },
-  "icon": "./icon.svg",
-  "scripts": {}
+  "icon": "./icon.svg"
 }

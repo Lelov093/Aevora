@@ -24,7 +24,7 @@ import type {
 } from './contract/slots.ts'
 import type { InputNotice } from './contract/input.ts'
 import type { ReferenceInsert } from './contract/draft-editor.ts'
-import { createConversationStore, readConversationViewPreference } from './stores.ts'
+import { clearConversationStorage, createConversationStore, readConversationViewPreference } from './stores.ts'
 import { formatFileMention } from '@deepseek-ai/dsh-file-reference/grammar'
 import { relativizeToCwd, workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
 import { ConversationController, UnsupportedImageMediaTypeError, isImageMediaType } from './service.ts'
@@ -154,6 +154,15 @@ function concreteConversation(ctx: Context): ConversationController {
  * @param ctx - Client root context.
  */
 export function apply(ctx: Context, config: Config = Config({})): void {
+  ctx.on('client/session-deleted', ids => {
+    for (const id of ids) {
+      try {
+        clearConversationStorage(id)
+      } catch (error: unknown) {
+        ctx.logger.warn('Unable to clear a deleted Session draft: %s', String(error))
+      }
+    }
+  })
   const sessions = ctx.sessions
   const slots = ctx.slots
   // Schemastery's field default is materialized before Cordis calls apply.
@@ -462,12 +471,14 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     children: {
       'conversation.input.attachments': { kind: 'single', scope: 'session-maybe' },
       'conversation.input.overlay': { kind: 'list', scope: 'session' },
+      'conversation.input.preview': { kind: 'list', scope: 'session' },
       'conversation.input.permission': { kind: 'single', scope: 'session' },
       'conversation.input.left': { kind: 'list', scope: 'session' },
       'conversation.input.plan': { kind: 'single', scope: 'session' },
       'conversation.input.right': { kind: 'list', scope: 'session' },
       'conversation.input.model': { kind: 'single', scope: 'session' },
       'conversation.input.activity': { kind: 'single', scope: 'session' },
+      'conversation.input.empty-action': { kind: 'chain', scope: 'session' },
       'conversation.composer.dock': { kind: 'list', scope: 'session' },
     },
     inject: (sessionId: SessionId | undefined): ComposerBarInjected => {

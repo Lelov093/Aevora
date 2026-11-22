@@ -23,7 +23,7 @@ import pLimit, { type LimitFunction } from 'p-limit'
 import {
   SessionPersistence, SessionPersistenceRevision, SessionFormatUnsupportedError,
   SessionPersistenceCorruptionError,
-  SessionAlreadyExistsError, SessionPersistenceNotFoundError,
+  SessionAlreadyExistsError, SessionAlreadyOwnedError, SessionPersistenceNotFoundError,
   assertStoredId, materializeCreateHeader, sessionFormatVersionRefusal, validateStoredEvents,
   type SessionAccess, type SessionHandle,
   type SessionHandleReadResult,
@@ -32,8 +32,13 @@ import {
   type SessionPersistenceSnapshot, type SessionPersistenceStatOptions,
   type SessionPersistenceRevision as PersistenceRevision,
 } from '@deepseek-ai/dsh-session-persistence'
+import { HostDeletionJournal, sessionDeletionDomain, type ConfirmedDeletion } from '@deepseek-ai/dsh-session-persistence/deletion-journal'
+import type { DeletionId } from '@deepseek-ai/dsh-session-persistence'
+import type {} from '@deepseek-ai/dsh-storage-domain'
 import { JsonlBackendTracker, JsonlSessionHandle, type StorageHandleState } from './storage.ts'
 import { SessionWriteLease } from './lease.ts'
+import { assertUnmanagedSessionRoot, openManagedDeletionRoot } from './managed-deletion-root.ts'
+import { inspectSessionLogRemoval, purgeSessionLogRemoval, storedSessionLogRemoval } from './deletion-artifacts.ts'
 import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionId, SessionHeader, SessionLogOffset as SessionLogOffsetType } from '@deepseek-ai/dsh-session'
 import {
@@ -58,6 +63,35 @@ import {
 } from './generation.ts'
 
 export type { JsonlCompression } from './format.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** JSONL file ownership for an enrolled deletion root. */
+    sessionDeletionFiles: SessionDeletionFiles
+  }
+}
+
+/** Managed JSONL operations used by the Host deletion process. */
+export interface SessionDeletionFiles {
+  /**
+   * Prevent new handles during pre-commit admission and release the fence on refusal.
+   * @param ids - Host-verified IDs reserved as a single set.
+   * @returns the temporary fence release.
+   */
+  freeze(ids: readonly SessionId[]): () => void
+  /**
+   * Collect the durable artifact plan while new handles are fenced.
+   * @param expected - identity from the Host's final Session check.
+   * @returns the confirmed physical identity for the journal.
+   */
+  inspect(expected: Pick<SessionHeader, 'id' | 'createdAt'>): Promise<ConfirmedDeletion['targets'][number]>
+  /**
+   * Remove the known log artifacts, keeping the managed directory's lease anchor.
+   * @param deletionId - durable acceptance record.
+   * @returns verification or a retriable storage contention outcome.
+   */
+  purge(deletionId: DeletionId): Promise<'verified' | 'retryable'>
+}
 
 /**
  * Internal handoff-reuse policy, not deployment configuration: a cold
@@ -100,6 +134,8 @@ export interface Config {
    * readable directory; an absent root is created on first materialization.
    */
   root: string
+  /** Enroll an exclusive local root and restore the deletion journal before serving Sessions. */
+  managedDeletion?: boolean
   /** Physical encoding; defaults to checksummed Zstandard frames. */
   compression?: JsonlCompression
   /**
@@ -312,8 +348,10 @@ class JsonlSessionPersistence extends SessionPersistence {
   private readonly coldLogMemo = new Map<SessionId, StoredLog>()
   /** One joinable decode/migration operation per selected historical Session file revision. */
   private readonly migrationPreparations = new Map<SessionId, MigrationPreparation>()
+  private readonly opening = new Map<SessionId, number>()
+  private readonly deletionFences = new Set<SessionId>()
 
-  constructor(ctx: Context, public config: Config, private readonly tracker: JsonlBackendTracker) {
+  constructor(ctx: Context, public config: Config, private readonly tracker: JsonlBackendTracker, private readonly deletionJournal?: HostDeletionJournal) {
     super(ctx)
     /* v8 ignore next 5 -- generated catalog and Session source share one build-time version owner. */
     if (sessionFormatCatalog.currentVersion !== SESSION_FORMAT_VERSION) {
@@ -335,6 +373,16 @@ class JsonlSessionPersistence extends SessionPersistence {
         error instanceof SessionFormatUnsupportedMigrationError,
     }
     this.assertUsableRoot()
+    if (deletionJournal !== undefined) {
+      ctx.effect(() => ctx.provide('sessionDeletionAdmission', {
+        blocks: id => this.deletionFences.has(id) || deletionJournal.blocks(id),
+      }), 'provide managed Session admission')
+      ctx.effect(() => ctx.provide('sessionDeletionFiles', {
+        freeze: ids => this.freezeDeletion(ids),
+        inspect: expected => this.inspectDeletion(expected),
+        purge: deletionId => this.purgeDeletion(deletionId),
+      }), 'provide managed JSONL deletion files')
+    }
   }
 
   /**
@@ -357,7 +405,11 @@ class JsonlSessionPersistence extends SessionPersistence {
    * @param options - optional cancellation.
    * @returns the owned write handle.
    */
-  async create(header: SessionHeader, options?: SessionPersistenceCreateOptions): Promise<SessionHandle> {
+  create(header: SessionHeader, options?: SessionPersistenceCreateOptions): Promise<SessionHandle> {
+    return this.trackOpening(header.id, () => this.createSession(header, options))
+  }
+
+  private async createSession(header: SessionHeader, options?: SessionPersistenceCreateOptions): Promise<SessionHandle> {
     options?.signal?.throwIfAborted()
     const snapshot = materializeCreateHeader(header)
     // Fail fast on a seeded/cut mismatch with the exact refusal the header
@@ -370,6 +422,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       throw new SessionAlreadyExistsError(snapshot.id)
     }
     options?.signal?.throwIfAborted()
+    if (this.deletionFences.has(snapshot.id) || this.deletionJournal?.blocks(snapshot.id)) throw new SessionAlreadyExistsError(snapshot.id)
     // No lock yet: before materialization there is no durable artifact for
     // another process to contend over, so the handle acquires the lock right
     // before its first log bytes publish (ensureLease); an unmaterialized
@@ -385,10 +438,15 @@ class JsonlSessionPersistence extends SessionPersistence {
    * @param options - optional cancellation.
    * @returns the open handle.
    */
-  async open(id: SessionId, access: SessionAccess, options?: SessionPersistenceOpenOptions): Promise<SessionHandle> {
+  open(id: SessionId, access: SessionAccess, options?: SessionPersistenceOpenOptions): Promise<SessionHandle> {
+    return this.trackOpening(id, () => this.openSession(id, access, options))
+  }
+
+  private async openSession(id: SessionId, access: SessionAccess, options?: SessionPersistenceOpenOptions): Promise<SessionHandle> {
     options?.signal?.throwIfAborted()
     await this.ensureRootEncoding()
     options?.signal?.throwIfAborted()
+    this.assertDeletionAccess(id)
     const pending = this.tracker.pendingOf(id)
     if (access === 'read') {
       if (pending !== undefined) {
@@ -416,6 +474,7 @@ class JsonlSessionPersistence extends SessionPersistence {
           inheritedEventCount: stored.inheritedEventCount,
         }
       }
+      this.assertDeletionAccess(id)
       return this.tracker.adopt(new JsonlSessionHandle(this, id, stored.meta, 'read', state))
     }
     // A pending entry always belongs to an ACTIVE creator handle (close erases
@@ -428,6 +487,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       lease = await this.acquireLease(id, undefined, dirname(resolved.currentPath))
       const prepared = await this.requireStoredLog(id, options?.signal)
       options?.signal?.throwIfAborted()
+      this.assertDeletionAccess(id)
       let stored: CurrentStoredLog
       if (prepared.status === 'prepared') {
         stored = await this.publishStoredMigration(id, prepared)
@@ -435,6 +495,7 @@ class JsonlSessionPersistence extends SessionPersistence {
         stored = prepared
       }
       options?.signal?.throwIfAborted()
+      this.assertDeletionAccess(id)
       return this.tracker.adopt(new JsonlSessionHandle(this, id, stored.meta, 'write', {
         cursor: stored.events.length,
         materialized: true,
@@ -464,6 +525,88 @@ class JsonlSessionPersistence extends SessionPersistence {
     }
   }
 
+  /** Fence new handles for accepted deletions even if the physical log still exists. */
+  private assertDeletionAccess(id: SessionId): void {
+    if (this.deletionFences.has(id) || this.deletionJournal?.blocks(id)) throw new SessionPersistenceNotFoundError(id)
+  }
+
+  private async trackOpening(id: SessionId, operation: () => Promise<SessionHandle>): Promise<SessionHandle> {
+    if (this.deletionJournal === undefined) return operation()
+    this.assertDeletionAccess(id)
+    this.opening.set(id, (this.opening.get(id) ?? 0) + 1)
+    try {
+      return await operation()
+    } finally {
+      const remaining = (this.opening.get(id) ?? 1) - 1
+      if (remaining === 0) this.opening.delete(id)
+      else this.opening.set(id, remaining)
+    }
+  }
+
+  private freezeDeletion(ids: readonly SessionId[]): () => void {
+    for (const id of ids) {
+      this.assertDeletionAccess(id)
+      if (this.opening.has(id)) throw new SessionAlreadyOwnedError(id)
+    }
+    for (const id of ids) this.deletionFences.add(id)
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      for (const id of ids) this.deletionFences.delete(id)
+    }
+  }
+
+  private async inspectDeletion(expected: Pick<SessionHeader, 'id' | 'createdAt'>): Promise<ConfirmedDeletion['targets'][number]> {
+    const { id } = expected
+    if (!this.deletionFences.has(id)
+      || [...this.tracker.openHandles].some(handle => handle.id === id)
+      || this.migrationPreparations.has(id)) throw new SessionAlreadyOwnedError(id)
+    const selected = await this.findLog(id)
+    if (selected === undefined) throw new SessionPersistenceNotFoundError(id)
+    const lease = await this.acquireLease(id, undefined, dirname(selected.sourcePath))
+    try {
+      const meta = await this.readGenerationHeader(selected, id)
+      if (meta === undefined || meta.header.createdAt !== expected.createdAt) throw new SessionPersistenceNotFoundError(id)
+      const plan = await inspectSessionLogRemoval(this.root, meta.header, lease)
+      return {
+        sessionId: id,
+        createdAt: meta.header.createdAt,
+        physicalIdentity: JSON.stringify({ ...plan, cwd: meta.header.cwd }),
+      }
+    } finally {
+      await lease.release()
+    }
+  }
+
+  private async purgeDeletion(deletionId: DeletionId): Promise<'verified' | 'retryable'> {
+    const operation = this.deletionJournal?.get(deletionId)
+    if (operation === undefined || operation.state === 'deleted' || operation.remaining[0] !== 'logs') {
+      throw new Error('Session log purge requires durable acceptance at the log cleanup step')
+    }
+    for (const target of operation.targets) {
+      const id = target.sessionId
+      if (this.opening.has(id) || [...this.tracker.openHandles].some(handle => handle.id === id)
+        || this.migrationPreparations.has(id)) return 'retryable'
+      const plan = storedSessionLogRemoval.parse(JSON.parse(target.physicalIdentity))
+      const header = { id, ...(plan.cwd === undefined ? {} : { cwd: plan.cwd }) }
+      const directory = sessionDir(this.root, header.cwd, id)
+      try {
+        const lease = await this.acquireLease(id, header.cwd, directory)
+        try {
+          await purgeSessionLogRemoval(this.root, header, lease, plan)
+          this.coldLogMemo.delete(id)
+        } finally {
+          await lease.release()
+        }
+      } catch (error: unknown) {
+        if (error instanceof SessionAlreadyOwnedError) return 'retryable'
+        throw error
+      }
+    }
+    return 'verified'
+  }
+
   /**
    * Flush every active write handle in one durability barrier; see the seam
    * contract.
@@ -485,6 +628,7 @@ class JsonlSessionPersistence extends SessionPersistence {
     options?: SessionPersistenceStatOptions,
   ): Promise<SessionPersistenceSnapshot | undefined> {
     options?.signal?.throwIfAborted()
+    if (this.deletionJournal?.blocks(id)) return undefined
     await this.ensureRootEncoding()
     options?.signal?.throwIfAborted()
     const pending = this.tracker.pendingOf(id)
@@ -498,6 +642,7 @@ class JsonlSessionPersistence extends SessionPersistence {
     try {
       const identity = await stat(selected.sourcePath, { bigint: true })
       options?.signal?.throwIfAborted()
+      if (this.deletionJournal?.blocks(id)) return undefined
       return {
         ...metadata,
         revision: selected.sourceVersion < SESSION_FORMAT_VERSION
@@ -560,7 +705,8 @@ class JsonlSessionPersistence extends SessionPersistence {
       if (!listed.has(id)) snapshots.push({ header: entry.header, revision: entry.revision })
     }
     signal?.throwIfAborted()
-    return snapshots
+    return this.deletionJournal === undefined ? snapshots
+      : snapshots.filter(snapshot => !this.deletionJournal?.blocks(snapshot.header.id))
   }
 
   // --- handle-facing storage internals (package-private via the handle class below) ---
@@ -1809,6 +1955,7 @@ export const name = 'session-persistence-jsonl'
 /** Loader schema for the backend's root, physical encoding, and listing concurrency. */
 export const Config: z<Config> = z.object({
   root: z.string().required(),
+  managedDeletion: z.boolean().default(false),
   compression: JsonlCompressionSchema,
   listConcurrency: z.natural().min(1).default(DEFAULT_LIST_CONCURRENCY),
 })
@@ -1822,6 +1969,28 @@ export const Config: z<Config> = z.object({
  * @returns resolves when the service is ready.
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
+  if (config.managedDeletion) {
+    const managed = ctx.plugin({
+      name: 'session-persistence-jsonl-managed-root',
+      inject: ['storageDomain'],
+      async apply(owner: Context) {
+        const root = await openManagedDeletionRoot(config.root)
+        owner.effect(() => root.release, 'release managed Session root')
+        const domain = await owner.storageDomain.open(sessionDeletionDomain)
+        owner.effect(() => () => domain.close(), 'close Session deletion journal')
+        const journal = new HostDeletionJournal(domain, root.path)
+        owner.effect(() => owner.provide('sessionDeletionJournal', journal), 'provide Session deletion journal')
+        await mountJsonl(owner, { ...config, root: root.path }, journal)
+      },
+    })
+    await managed.await()
+    return
+  }
+  await assertUnmanagedSessionRoot(config.root)
+  await mountJsonl(ctx, config)
+}
+
+async function mountJsonl(ctx: Context, config: Config, journal?: HostDeletionJournal): Promise<void> {
   let service!: Fiber
   // Keep this generator synchronous so thenable disposers are registered as functions, not awaited.
   ctx.effect(function* () {
@@ -1830,7 +1999,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     service = ctx.plugin({
       name: 'session-persistence-jsonl-service',
       apply(serviceCtx: Context) {
-        new JsonlSessionPersistence(serviceCtx, config, tracker)
+        new JsonlSessionPersistence(serviceCtx, config, tracker, journal)
       },
     })
     yield service.dispose

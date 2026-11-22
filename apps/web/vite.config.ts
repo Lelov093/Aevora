@@ -248,6 +248,10 @@ export default defineConfig({
     // Browser boot supplies loader.internal before importing plugin entries,
     // so the filesystem resolver is never invoked in the browser.
     alias: [
+      // The static Client shell keeps this platform module external so the
+      // module table owns its identity. Resolve the built workspace artifact
+      // explicitly when a checkout has no package-local pnpm link.
+      { find: '@deepseek-ai/dsh-typert-protocol/remote-info', replacement: src('../../packages/typert/protocol/lib/types/remote-info.js') },
       { find: /^node:module$/, replacement: src('./src/node-module-stub.ts') },
     ],
   },

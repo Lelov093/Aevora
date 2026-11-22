@@ -56,6 +56,5 @@
     "@deepseek-ai/dsh-deepseek-account": {
       "optional": true
     }
-  },
-  "scripts": {}
+  }
 }

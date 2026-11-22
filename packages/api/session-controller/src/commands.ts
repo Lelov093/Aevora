@@ -23,6 +23,8 @@ import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
+import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
+import { promptGuard } from './prompt-guard.ts'
 import {
   ApiSessionAgentController,
   ApiSessionCwdConflict,
@@ -84,6 +86,13 @@ function latestCompletedPrefixBoundary(events: readonly SessionEvent[]): Session
 
 /** Implements Session business commands delegated by the Session Controller Remote service. */
 export class SessionCommandController {
+  private promptGuard: ProjectionHandle<{ readonly userSeq: SessionSeq | null }> | undefined
+
+  /** Register the native conditional-admission reader before exposing prompt().
+   * @returns after the required Session projection is available.
+   */
+  async initialize(): Promise<void> { this.promptGuard = await this.ctx.sessionProjections.register(promptGuard) }
+  private readonly promptAdmissions = new WeakMap<Agent, Map<SessionRequestId, Promise<SessionPromptValue>>>()
   /**
    * @param ctx - Host context carrying Agent, model, attachment, title, and Workspace services.
    * @param agents - sole owner of create, resume, and Agent composition.
@@ -304,7 +313,11 @@ export class SessionCommandController {
    */
   async prompt(request: SessionPromptRequest, source: MessageSource): Promise<SessionPromptValue> {
     const agent = await this.resolveAgent(request.sessionId)
+    let admissions = this.promptAdmissions.get(agent)
+    const existing = admissions?.get(request.requestId)
+    if (existing !== undefined) return existing
     if (hasPromptRequest(agent, request.requestId)) return { accepted: true }
+    if (admissions === undefined) { admissions = new Map(); this.promptAdmissions.set(agent, admissions) }
     const admission = resolvePromptFileReceipts(
       request.content,
       receiptId => this.ctx.fileUploads.resolve(agent, receiptId),
@@ -336,6 +349,15 @@ export class SessionCommandController {
           )
         }
         using binding = this.ctx.fileUploads.bindPrompt(agent, admission.receiptIds, request.requestId)
+        if (request.interruptAt !== undefined) {
+          if (this.promptGuard === undefined) throw new Error('Conditional prompt admission is not initialized')
+          if (request.mode !== 'queue' || this.promptGuard.stateOf(agent.session).userSeq !== request.interruptAt
+            || agent.inbox.nextTurn.length > 0 || agent.inbox.nextStep.length > 0) {
+            throw new RemoteError('session/agent-busy', 'Conditional prompt target changed', { reason: 'INTERRUPTION_TARGET_CHANGED' })
+          }
+          // No await separates validation, native cancellation and the identified inbox insertion.
+          agent.cancel({ kind: 'user' }, { keepInbox: true })
+        }
         if (request.mode === 'steer') agent.steer(message)
         else agent.followup(message)
         binding.commit()
@@ -348,7 +370,11 @@ export class SessionCommandController {
       }
       return { accepted: true }
     }
-    return hasImage ? this.agents.serializeImageAdmission(agent, admit) : admit()
+    const pending = hasImage ? this.agents.serializeImageAdmission(agent, admit) : admit()
+    admissions.set(request.requestId, pending)
+    const release = (): void => { admissions.delete(request.requestId) }
+    void pending.then(release, release)
+    return pending
   }
 
   private async requireModel(selection: Pick<AgentModelSelection, 'provider' | 'model'>): Promise<void> {

@@ -1,22 +1,14 @@
 # Aevora
 
-[简体中文](README.md) | [English](README.en.md)
+简体中文 | [English](README.en.md)
 
-Aevora 是一款正在开发的个人 AI，结合伙伴交流与通用事务处理能力。你可以与它聊天，也可以让它在授权范围内使用工具完成工作。
+Aevora 是一款桌面 AI 助手。你可以用文字或语音对话、为助手设置角色、管理长期记忆，并在授权范围内让它搜索网页或使用工作区工具。
 
-## 当前功能
+## 从源码启动
 
-- 本地进入工作区，在设置中配置模型提供方和凭据。
-- Azure Bloom 独立外观，以及原生浅色、深色外观。
-- 双层导航与主页入口。
-- 过程概览和详细轨迹：查看真实会话记录，搜索、折叠并通过轮次索引定位；历史按从早到晚排列，可自由滚动。
-- 支持原生工具、会话历史和人格配置，并可调整上下文压缩指令。
+请准备 Git、Node.js **24.9.0 或更新版本**、pnpm **11.28.5** 和 Rust 工具链。Windows 还需要 MSVC C++ 生成工具和 Windows SDK，用于编译原生组件。首次安装可能下载桌面运行时和平台依赖。
 
-长期记忆、实时语音和自主社交仍在规划中。账号、更新、命令行工具、产品反馈与回答评价目前为占位，评价尚未用于学习。联网搜索只保留已接入的 DeepSeek 官方配置，其他提供方和自定义端点尚未接入。
-
-## 从源码运行
-
-当前提供源码开发版，未提供独立安装包。请先准备 **Node.js 24.9 或更新版本**和 **pnpm 11.28.5**。
+在 PowerShell 中运行以下命令。
 
 ```powershell
 git clone https://github.com/Lelov093/Aevora.git
@@ -26,12 +18,36 @@ pnpm run build
 pnpm run start:desktop
 ```
 
-构建后也可运行 `pnpm run start:web` 使用 Web 界面。首次安装或启动可能需要下载平台依赖和桌面运行时；请等待终端提示，不要重复启动。模型凭据通过应用设置配置，工具执行仍受所选权限约束。
+构建完成后，日常打开用 `pnpm run start:desktop`，退出时关闭 Aevora 窗口。想在浏览器中体验时，用 `pnpm run start:web`，并打开终端给出的本地地址。
 
-公开仓库只提供运行源码、必要构建文件与使用说明，不包含预装依赖、个人配置或聊天数据。
+默认源码 Desktop 把配置和会话存放在 `apps/desktop/.desktop-build/development/home` 下。持续使用同一个 checkout 和启动命令即可沿用之前的配置。首次使用时，在应用中配置自己的服务。
+
+## 第一次对话
+
+1. 进入工作区，打开 **设置 → 模型**。
+2. 选择 DeepSeek，或添加已有的兼容提供方。按提供方填写模型、API 端点和 API Key。使用本地模型时，先在本机启动兼容的推理服务，再填写 API 地址与模型 ID。
+3. 选择对话模型，新建会话并发送一条消息。工具按当前工作区和所选权限运行。请通过应用设置管理凭据。
+
+## 主要功能
+
+| 功能 | 如何使用 |
+| --- | --- |
+| 角色卡 | 启用 Aevora 插件后，在 **设置 → Aevora 角色卡** 编辑助手的身份、表达方式和边界。新会话会捕获当前生效版本。 |
+| 记忆与意识空间 | 在 **插件 → Aevora** 管理记忆与意识空间。意识空间可以浏览会话轨迹、当前上下文和回放。 |
+| 听写 | 启用 **语音输入** 插件并准备所选识别服务。在输入框旁点击麦克风，完成后，文字回填到可编辑草稿。听写支持本地 SenseVoice，可从插件详情准备模型。 |
+| 实时语音 | 在 **设置 → 语音** 配置流式识别和语音合成，按提示准备本地轮次资源。清空输入框后点击语音聊天。可设置回复时继续收音，语音期间仍可输入文字或随时结束。 |
+| 联网搜索 | 在 **设置 → 联网搜索** 配置 DeepSeek、Exa、Perplexity 或 Tavily。添加 Tavily 时，填写名称、端点和 API Key，再显式选择默认搜索配置。 |
+| 会话管理 | 在会话菜单归档会话。符合 Host 托管条件的会话可以预览影响范围并确认永久删除。旧存储下的会话可能只提供归档。 |
+
+云语音按所选服务上传音频或待合成文字，可能产生用量费用。
+
+## 启用 Aevora 插件
+
+1. 启动过 Desktop 后退出应用。
+2. 进入终端显示的 `DSH_HOME`，打开 `profiles/desktop/cordis.patch.yml`。使用默认启动命令时，`DSH_HOME` 位于本仓库的 `apps/desktop/.desktop-build/development/home`。
+3. 文件为空时复制整份配置示例。文件已有配置时，将示例的 `insert` 段作为新 YAML 列表项添加，并复用已有的同 ID 条目。[Aevora 插件配置示例](apps/cli/config/examples/aevora-desktop.cordis.yml)
+4. 运行 `pnpm run start:desktop`，在 **插件 → Aevora** 管理各项能力。
 
 ## 来源与许可
 
-Aevora 直接基于完整 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 源码二次开发，底座 revision 为 `22ddee3792402c3e70ec5f86a63c3e3e895a2f60`，沿用 Node.js、pnpm、Electron、React 与 Cordis 架构。
-
-原始 [MIT 许可](LICENSE)、[第三方声明](THIRD_PARTY_NOTICES.md)及依赖源码中的适用许可均予保留。技术包名和上游来源保持真实；Aevora 不是 DeepSeek 官方产品。
+Aevora 基于 DeepSeek Harness 和 Cordis 架构开发，保留原始 MIT 许可和第三方声明。[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) · [MIT 许可](LICENSE) · [第三方声明](THIRD_PARTY_NOTICES.md)

@@ -8,7 +8,11 @@
     "src"
   ],
   "references": [
-    { "path": "../../packages/util/plugin-market-index" },
-    { "path": "../../packages/util/package-manifest" }
+    {
+      "path": "../../packages/util/plugin-market-index"
+    },
+    {
+      "path": "../../packages/util/package-manifest"
+    }
   ]
 }

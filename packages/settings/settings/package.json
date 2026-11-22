@@ -56,6 +56,5 @@
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
     "@deepseek-ai/cosmokit": "workspace:~",
     "yaml": "^2.8.1"
-  },
-  "scripts": {}
+  }
 }

@@ -1,9 +1,19 @@
 /** Locale bundles for the web-search provider's settings page. */
 
+import { providerSettingsEn, providerSettingsZh } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SettingsFormLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 
+const providerPageEn = { ...providerSettingsEn,
+  providerIntro: 'Manage built-in search and add other providers. Saving settings makes no search request.',
+  providerEndpoint: 'Service endpoint',
+  providerEndpointHint: 'Use the selected provider protocol. Exa and Tavily append /search; Perplexity appends /chat/completions. A custom address must implement that same protocol.',
+  providerModel: 'Model', providerModelHint: 'Enter a model supported by this search service.',
+  providerSearchDepth: 'Search depth', providerSearchDepthHint: 'Use basic, fast, ultra-fast, or advanced.',
+  providerTopic: 'Topic', providerTopicHint: 'Use general, news, or finance.',
+}
+
 /** Locale keys the page renders. */
-export type WebSearchSettingsLocaleKey =
+export type WebSearchSettingsLocaleKey = keyof typeof providerPageEn
   | 'title' | 'description' | 'useSearchApi' | 'useSearchApiHint' | 'searchGuide' | 'searchGuideUrl'
   | 'apiKey' | 'apiKeyHint' | 'apiKeySet' | 'apiKeyUnset'
   | 'baseUrl' | 'baseUrlHint' | 'searchApiBaseUrl' | 'searchApiBaseUrlHint' | 'maxUses' | 'maxUsesHint' | 'count' | 'countHint'
@@ -12,6 +22,7 @@ export type WebSearchSettingsLocaleKey =
 
 /** English copy. */
 export const en: Record<WebSearchSettingsLocaleKey, string> = {
+  ...providerPageEn,
   title: 'Web search',
   description: 'Set up the DeepSeek search provider.',
   useSearchApi: 'Use the new Web Search API',
@@ -43,6 +54,13 @@ export const en: Record<WebSearchSettingsLocaleKey, string> = {
 
 /** Simplified Chinese copy. */
 export const zh: Record<WebSearchSettingsLocaleKey, string> = {
+  ...providerPageEn, ...providerSettingsZh,
+  providerIntro: '管理内置搜索并按需添加其他提供商，保存配置不会发起搜索',
+  providerEndpoint: '服务端点',
+  providerEndpointHint: '地址需支持所选提供商协议；Exa 和 Tavily 追加 /search，Perplexity 追加 /chat/completions；自定义地址也须实现相同协议',
+  providerModel: '模型', providerModelHint: '填写该搜索服务支持的模型',
+  providerSearchDepth: '搜索深度', providerSearchDepthHint: '填写 basic、fast、ultra-fast 或 advanced。',
+  providerTopic: '主题', providerTopicHint: '填写 general、news 或 finance。',
   title: '网页搜索',
   description: '设置 DeepSeek 的搜索提供方。',
   useSearchApi: '启用新版 Web 搜索 API',
@@ -83,6 +101,7 @@ export function formLabels(t: (key: WebSearchSettingsLocaleKey) => string): Sett
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  ...providerPageEn,
   'title': 'Web 検索',
   'description': 'DeepSeek 検索プロバイダーを設定します。',
   'useSearchApi': '新しい Web Search API を使用する',
@@ -114,6 +133,7 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  ...providerPageEn,
   title: 'búsqueda web',
   description: 'Configure el proveedor de búsqueda DeepSeek.',
   useSearchApi: 'Utilice la nueva búsqueda web API',
@@ -145,6 +165,7 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  ...providerPageEn,
   title: 'Recherche sur le Web',
   description: 'Configurez le moteur de recherche DeepSeek.',
   useSearchApi: 'Utilisez la nouvelle recherche Web API',
@@ -176,6 +197,7 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  ...providerPageEn,
   title: 'Websuche',
   description: 'Richten Sie den Suchanbieter DeepSeek ein.',
   useSearchApi: 'Nutzen Sie die neue Websuche API',
@@ -207,6 +229,7 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  ...providerPageEn,
   title: 'Веб-поиск',
   description: 'Настройте поисковую систему DeepSeek.',
   useSearchApi: 'Используйте новый веб-поиск API',
@@ -238,6 +261,7 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  ...providerPageEn,
   title: 'Pesquisa na web',
   description: 'Configure o provedor de pesquisa DeepSeek.',
   useSearchApi: 'Use a nova Pesquisa na Web API',

@@ -3033,6 +3033,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'after the preparation task settles.',
       },
       {
+        signature: '@Remote({ mode: \'stream\' }) async *stream(selection: SpeechSelection, signal: AbortSignal): RemoteStream<SpeechStreamFrame, SpeechStreamCommand>',
+        description: 'Upload a single live recording without submitting or mutating a Session.',
+        parameters: [{ name: 'selection', description: 'pinned recognizer and language, independent from synthesis.' }, { name: 'signal', description: 'native Remote cancellation; disconnect never reconnects or replays audio.' }],
+        returns: 'PCM intake limits, live transcript and measured usage.',
+      },
+      {
         signature: '@Remote async transcribe(request: TranscriptionRequest, signal: AbortSignal): Promise<Transcript>',
         description: 'Validate and transcribe one recording through the explicit provider selection.',
         parameters: [{ name: 'request', description: 'canonical WAV encoded as base64, provider id and language hint.' }, { name: 'signal', description: 'Client cancellation or Remote contribution disposal.' }],
@@ -3091,6 +3097,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Apply composition defaults and capture the selected provider. Missing providers and unsupported languages fail explicitly.',
         parameters: [{ name: 'request', description: 'complete recording and optional selection.' }],
         returns: 'provider-pinned input for transcribe().',
+      },
+      {
+        signature: 'resolveStream(selection?: SpeechSelection): SpeechStreamSpec',
+        description: 'Resolve and pin a live recognizer without opening a connection.',
+        parameters: [{ name: 'selection', description: 'explicit selection, or current defaults when omitted.' }],
+        returns: 'a provider supporting live recognition; never falls back to local inference.',
+      },
+      {
+        signature: 'async *stream(spec: SpeechStreamSpec, input: SpeechAudioSource, signal: AbortSignal): AsyncIterable<SpeechStreamEvent>',
+        description: 'Execute a pinned live recognizer, joining cleanup before registration withdrawal completes.',
+        parameters: [{ name: 'spec', description: 'resolved provider identity and language.' }, { name: 'input', description: 'bounded one-use audio source.' }, { name: 'signal', description: 'caller lifetime.' }],
+        returns: 'ordered live recognition events.',
       },
       {
         signature: 'async transcribe(spec: SpeechSpec, signal: AbortSignal): Promise<Transcript>',
@@ -3510,6 +3528,43 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'textToSpeech',
+    summary: 'Owns synthesis admission and provider lifetime, without changing Agent state.',
+    description: 'Owns synthesis admission and provider lifetime, without changing Agent state.',
+    methods: [
+      {
+        signature: 'register(provider: TtsProvider): () => Promise<void>',
+        description: 'Admit requests until the returned withdrawal cancels and joins them.',
+        parameters: [{ name: 'provider', description: 'implementation owned by the registering plugin.' }],
+        returns: 'awaited withdrawal.',
+      },
+      {
+        signature: 'resolve(input: TtsInput): TtsSpec',
+        description: 'Pin the selected provider for one explicit request.',
+        parameters: [{ name: 'input', description: 'explicit prose.' }],
+        returns: 'pinned provider and text.',
+      },
+      {
+        signature: 'resolveStreaming(): TtsStreamSpec',
+        description: 'Pin a locally available streaming provider without contacting it.',
+        parameters: [],
+        returns: 'provider with incremental synthesis support.',
+      },
+      {
+        signature: 'async synthesize(spec: TtsSpec, caller: AbortSignal): Promise<TtsAudio>',
+        description: 'Run synthesis while the caller, provider and service remain active.',
+        parameters: [{ name: 'spec', description: 'resolved operation.' }, { name: 'caller', description: 'caller lifetime.' }],
+        returns: 'complete audio after cleanup.',
+      },
+      {
+        signature: 'async *stream(spec: TtsStreamSpec, input: AsyncIterable<TtsTextPiece>, caller: AbortSignal): AsyncIterable<TtsStreamEvent>',
+        description: 'Consume a pinned provider until completion, cancellation or iterator release.',
+        parameters: [{ name: 'spec', description: 'explicitly resolved stream provider.' }, { name: 'input', description: 'caller-owned incremental prose.' }, { name: 'caller', description: 'consumer lifetime.' }],
+        returns: 'ordered provider frames; withdrawal waits for cleanup.',
+      },
+    ],
+  },
+  {
     key: 'timer',
     summary: 'Disposable timer helpers mixed into Cordis contexts.',
     description: 'Disposable timer helpers mixed into Cordis contexts.',
@@ -3701,6 +3756,31 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'ttsController',
+    summary: 'Owns browser synthesis admission and sanitized failure reports.',
+    description: 'Owns browser synthesis admission and sanitized failure reports.',
+    methods: [
+      {
+        signature: '@Remote capabilities(): TtsCapabilities',
+        description: 'Read local streaming support and resource limits without a synthesis request.',
+        parameters: [],
+        returns: 'selected provider support and Host-owned queue budgets.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) async *stream(signal: AbortSignal): RemoteStream<TtsStreamFrame, TtsStreamCommand>',
+        description: 'Stream incremental prose and consume playback receipts through the authenticated native carrier.',
+        parameters: [{ name: 'signal', description: 'one physical Remote operation; carrier loss cancels it without replay.' }],
+        returns: 'PCM chunks, alignment, usage and accepted-text acknowledgements.',
+      },
+      {
+        signature: '@Remote async synthesize(text: string, signal: AbortSignal): Promise<TtsResult>',
+        description: 'Synthesize selected prose without modifying conversation state.',
+        parameters: [{ name: 'text', description: 'complete visible prose selected by the user.' }, { name: 'signal', description: 'request lifetime.' }],
+        returns: 'mono PCM16 audio and measured usage.',
+      },
+    ],
+  },
+  {
     key: 'typert',
     summary: 'Registry of generated schemas, package reflection, invocations, and Remote dependency providers.',
     description: 'Registry of generated schemas, package reflection, invocations, and Remote dependency providers.',
@@ -3818,6 +3898,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'request', description: 'Questions, owner agent, and abort signal.' }],
         returns: 'The answer chosen or typed by the human.',
         throws: ['{UserQuestionError} code `ASK_ABORTED` when the supplied signal is already or becomes aborted, `CALLER_NOT_LIVE` when a supplied agent is not the registry\'s exact live instance, or `DELEGATED_CALLER` when that live agent is owned by another agent.'],
+      },
+    ],
+  },
+  {
+    key: 'voiceTurns',
+    summary: 'One owner per Session; disconnect releases both model processes and never restarts them.',
+    description: 'One owner per Session; disconnect releases both model processes and never restarts them.',
+    methods: [
+      {
+        signature: '@Remote async readiness(): Promise<TurnReadiness>',
+        description: 'Inspect configured files without running Python, loading weights or downloading.',
+        parameters: [],
+        returns: 'file presence separately from successful runtime loading.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\', resources: { session: (sessionId: SessionId) => sessionId } }) async *listen(sessionId: SessionId, signal: AbortSignal): RemoteStream<TurnFrame, TurnCommand>',
+        description: 'Own one foreground mode without locking ordinary text submissions.',
+        parameters: [{ name: 'sessionId', description: 'authorized native Session identity.' }, { name: 'signal', description: 'authenticated stream lifetime.' }],
+        returns: 'ordered local VAD and endpoint observations; no ASR, Agent or synthesis call.',
       },
     ],
   },
@@ -8097,6 +8196,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SpawnTeammateResult {\n    readonly member: TeamMemberView;\n}',
   },
   {
+    name: 'SpeechAudioSource',
+    declaration: 'export type SpeechAudioSource = (signal: AbortSignal) => AsyncIterable<Uint8Array>;',
+  },
+  {
     name: 'SpeechCatalog',
     declaration: 'export interface SpeechCatalog extends SpeechSnapshot {\n    readonly maxAudioBytes: number;\n    readonly maxDurationSeconds: number;\n}',
   },
@@ -8130,7 +8233,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SpeechProvider',
-    declaration: 'export interface SpeechProvider {\n    readonly info: SpeechProviderInfo;\n    readonly preparation?: SpeechPreparation;\n    transcribe(input: SpeechInput, signal: AbortSignal): Promise<Transcript>;\n}',
+    declaration: 'export interface SpeechProvider {\n    readonly info: SpeechProviderInfo;\n    readonly preparation?: SpeechPreparation;\n    transcribe(input: SpeechInput, signal: AbortSignal): Promise<Transcript>;\n    stream?(input: SpeechAudioSource, language: string, signal: AbortSignal): AsyncIterable<SpeechStreamEvent>;\n}',
   },
   {
     name: 'SpeechProviderId',
@@ -8138,7 +8241,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SpeechProviderInfo',
-    declaration: 'export interface SpeechProviderInfo {\n    readonly id: SpeechProviderId;\n    readonly name: string;\n    readonly location: \'host-local\' | \'cloud\';\n    readonly languages: readonly string[];\n    readonly setupEstimate?: SpeechSetupEstimate;\n    readonly downloadSources?: readonly string[];\n}',
+    declaration: 'export interface SpeechProviderInfo {\n    readonly id: SpeechProviderId;\n    readonly name: string;\n    readonly location: \'host-local\' | \'cloud\';\n    readonly streaming?: {\n        readonly sampleRate: number;\n    };\n    readonly languages: readonly string[];\n    readonly setupEstimate?: SpeechSetupEstimate;\n    readonly downloadSources?: readonly string[];\n}',
   },
   {
     name: 'SpeechProviderView',
@@ -8167,6 +8270,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SpeechSpec',
     declaration: 'export interface SpeechSpec extends SpeechInput {\n    readonly provider: SpeechProvider;\n}',
+  },
+  {
+    name: 'SpeechStreamCommand',
+    declaration: 'export type SpeechStreamCommand = {\n    readonly kind: \'audio\';\n    readonly sequence: number;\n    readonly startSample: number;\n    readonly audioBase64: string;\n} | {\n    readonly kind: \'finish\';\n    readonly samples: number;\n};',
+  },
+  {
+    name: 'SpeechStreamEvent',
+    declaration: 'export type SpeechStreamEvent = {\n    readonly kind: \'accepted\';\n    readonly bytes: number;\n} | {\n    readonly kind: \'sentence\';\n    readonly id: number;\n    readonly text: string;\n    readonly final: boolean;\n    readonly beginMs: number | null;\n    readonly endMs: number | null;\n} | {\n    readonly kind: \'usage\';\n    readonly usage: SpeechUsage;\n} | {\n    readonly kind: \'done\';\n    readonly usage: SpeechUsage;\n};',
+  },
+  {
+    name: 'SpeechStreamFrame',
+    declaration: 'export type SpeechStreamFrame = SpeechStreamEvent | {\n    readonly kind: \'ready\';\n    readonly sampleRate: number;\n    readonly maxDurationSeconds: number;\n    readonly limits: SpeechStreamLimits;\n} | {\n    readonly kind: \'failed\';\n    readonly reason: string;\n    readonly usage: SpeechUsage;\n};',
+  },
+  {
+    name: 'SpeechStreamLimits',
+    declaration: 'export interface SpeechStreamLimits {\n    readonly maxFrameSamples: number;\n    readonly maxPendingSamples: number;\n    readonly consumerTimeoutMs: number;\n    readonly maxTranscriptBytes: number;\n}',
+  },
+  {
+    name: 'SpeechStreamSpec',
+    declaration: 'export interface SpeechStreamSpec {\n    readonly provider: SpeechProvider;\n    readonly language: string;\n}',
+  },
+  {
+    name: 'SpeechUsage',
+    declaration: 'export interface SpeechUsage {\n    readonly inputTokens: number | null;\n    readonly outputTokens: number | null;\n    readonly audioSeconds: number | null;\n}',
   },
   {
     name: 'SpillLocator',
@@ -8742,7 +8869,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'Transcript',
-    declaration: 'export interface Transcript {\n    readonly text: string;\n    readonly audioSeconds: number;\n    readonly inferenceSeconds: number;\n}',
+    declaration: 'export interface Transcript {\n    readonly text: string;\n    readonly audioSeconds: number;\n    readonly inferenceSeconds: number | null;\n}',
   },
   {
     name: 'TranscriptionRequest',
@@ -8761,8 +8888,76 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TranslationSpec = AnonymousTranslationSpec | PaidTranslationSpec;',
   },
   {
+    name: 'TtsAudio',
+    declaration: 'export interface TtsAudio {\n    readonly pcm: Uint8Array;\n    readonly sampleRate: number;\n    readonly usage: TtsUsage;\n}',
+  },
+  {
+    name: 'TtsCapabilities',
+    declaration: 'export interface TtsCapabilities {\n    readonly streaming: boolean;\n    readonly limits: TtsStreamLimits;\n}',
+  },
+  {
+    name: 'TtsInput',
+    declaration: 'export interface TtsInput {\n    readonly text: string;\n}',
+  },
+  {
+    name: 'TtsProvider',
+    declaration: 'export interface TtsProvider {\n    readonly id: TtsProviderId;\n    available?(): boolean;\n    synthesize(input: TtsInput, signal: AbortSignal): Promise<TtsAudio>;\n    stream?(input: AsyncIterable<TtsTextPiece>, signal: AbortSignal): AsyncIterable<TtsStreamEvent>;\n}',
+  },
+  {
+    name: 'TtsProviderId',
+    declaration: 'export type TtsProviderId = Branded<\'TtsProviderId\'>;',
+  },
+  {
+    name: 'TtsResult',
+    declaration: 'export interface TtsResult {\n    readonly audioBase64: string;\n    readonly sampleRate: number;\n    readonly usage: TtsUsage;\n}',
+  },
+  {
+    name: 'TtsSpec',
+    declaration: 'export interface TtsSpec extends TtsInput {\n    readonly provider: TtsProvider;\n}',
+  },
+  {
+    name: 'TtsStreamCommand',
+    declaration: 'export type TtsStreamCommand = {\n    readonly kind: \'text\';\n    readonly sequence: number;\n    readonly offset: number;\n    readonly text: string;\n} | {\n    readonly kind: \'finish\';\n} | {\n    readonly kind: \'boundary\';\n} | {\n    readonly kind: \'played\';\n    readonly samples: number;\n};',
+  },
+  {
+    name: 'TtsStreamEvent',
+    declaration: 'export type TtsStreamEvent = {\n    readonly kind: \'task-started\';\n    readonly taskId: TtsTaskId;\n    readonly sampleRate: number;\n} | {\n    readonly kind: \'audio\';\n    readonly taskId: TtsTaskId;\n    readonly pcm: Uint8Array;\n} | {\n    readonly kind: \'sentence\';\n    readonly taskId: TtsTaskId;\n    readonly index: number;\n    readonly text: string;\n    readonly words: readonly TtsWord[];\n} | {\n    readonly kind: \'usage\';\n    readonly taskId: TtsTaskId;\n    readonly usage: TtsUsage;\n} | {\n    readonly kind: \'task-finished\';\n    readonly taskId: TtsTaskId;\n    readonly usage: TtsUsage;\n};',
+  },
+  {
+    name: 'TtsStreamFrame',
+    declaration: 'export type TtsStreamFrame = {\n    readonly kind: \'ready\';\n    readonly limits: TtsStreamLimits;\n} | {\n    readonly kind: \'text-accepted\';\n    readonly sequence: number;\n} | {\n    readonly kind: \'audio\';\n    readonly taskId: TtsTaskId;\n    readonly sequence: number;\n    readonly startSample: number;\n    readonly sampleRate: number;\n    readonly audioBase64: string;\n} | Exclude<TtsStreamEvent, {\n    readonly kind: \'audio\';\n}> | {\n    readonly kind: \'done\';\n    readonly samples: number;\n};',
+  },
+  {
+    name: 'TtsStreamLimits',
+    declaration: 'export interface TtsStreamLimits {\n    readonly maxPendingTextBytes: number;\n    readonly maxTextBytes: number;\n    readonly maxQueuedAudioMs: number;\n    readonly maxAudioChunkMs: number;\n    readonly consumerTimeoutMs: number;\n    readonly maxBufferedFrames: number;\n}',
+  },
+  {
+    name: 'TtsStreamSpec',
+    declaration: 'export interface TtsStreamSpec {\n    readonly provider: TtsProvider;\n    readonly stream: NonNullable<TtsProvider[\'stream\']>;\n    readonly signal: AbortSignal;\n}',
+  },
+  {
+    name: 'TtsTaskId',
+    declaration: 'export type TtsTaskId = Branded<\'TtsTaskId\'>;',
+  },
+  {
+    name: 'TtsTextPiece',
+    declaration: 'export type TtsTextPiece = {\n    readonly kind: \'text\';\n    readonly text: string;\n} | {\n    readonly kind: \'boundary\';\n};',
+  },
+  {
+    name: 'TtsUsage',
+    declaration: 'export interface TtsUsage {\n    readonly inputTokens: number | null;\n    readonly outputTokens: number | null;\n    readonly characters: number | null;\n}',
+  },
+  {
+    name: 'TtsWord',
+    declaration: 'export interface TtsWord {\n    readonly text: string;\n    readonly beginIndex: number;\n    readonly endIndex: number;\n    readonly beginTimeMs: number;\n    readonly endTimeMs: number;\n}',
+  },
+  {
     name: 'TurnBoundaryProjection',
     declaration: 'export interface TurnBoundaryProjection {\n    readonly openTurnStartSeq: OptionalSessionSeq;\n    readonly lastStepStartSeq: OptionalSessionSeq;\n    readonly lastStepBoundary: {\n        readonly kind: \'start\' | \'end\';\n        readonly seq: SessionSeq;\n    } | null;\n    readonly lastTurn: number;\n}',
+  },
+  {
+    name: 'TurnCommand',
+    declaration: 'export type TurnCommand = {\n    readonly kind: \'audio\';\n    readonly startSample: number;\n    readonly audioBase64: string;\n} | {\n    readonly kind: \'seal\';\n    readonly samples: number;\n    readonly explicit: boolean;\n} | {\n    readonly kind: \'reset\';\n};',
   },
   {
     name: 'TurnCompleteInput',
@@ -8783,6 +8978,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TurnEndReasonMap',
     declaration: 'export interface TurnEndReasonMap {\n    completed: {\n        kind: \'completed\';\n    };\n    aborted: {\n        kind: \'aborted\';\n        reason: TurnEndCancelCause;\n    };\n    blocked: {\n        kind: \'blocked\';\n    };\n    error: {\n        kind: \'error\';\n        error: LlmFailure;\n    };\n    \'max-tokens\': {\n        kind: \'max-tokens\';\n    };\n    interrupted: {\n        kind: \'interrupted\';\n    };\n    forked: {\n        kind: \'forked\';\n    };\n}',
+  },
+  {
+    name: 'TurnFrame',
+    declaration: 'export type TurnFrame = {\n    readonly kind: \'ready\';\n    readonly maxFrameSamples: number;\n    readonly maxPendingSamples: number;\n} | {\n    readonly kind: \'accepted\';\n    readonly samples: number;\n    readonly speaking: boolean;\n} | {\n    readonly kind: \'candidate\';\n    readonly samples: number;\n} | {\n    readonly kind: \'complete\';\n    readonly samples: number;\n    readonly probability: number;\n} | {\n    readonly kind: \'sealed\';\n    readonly samples: number;\n    readonly valid: boolean;\n} | {\n    readonly kind: \'reset\';\n};',
+  },
+  {
+    name: 'TurnReadiness',
+    declaration: 'export interface TurnReadiness {\n    readonly configured: boolean;\n    readonly filesPresent: boolean;\n    readonly model: \'smart-turn-v3.1-reference\';\n}',
   },
   {
     name: 'TurnStartInput',

@@ -66,6 +66,5 @@
     "@deepseek-ai/dsh-tool-executor-native": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "tsx": "^4.23.13"
-  },
-  "scripts": {}
+  }
 }

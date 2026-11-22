@@ -187,6 +187,7 @@ export class SessionController extends TypertRemoteService {
     this.agents = new ApiSessionAgentController(ctx)
     this.agents.initialize()
     this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
+    await this.commands.initialize()
     ctx.effect(() => ctx.fileUploads.registerAgentResolver(async (sessionId) => {
       const result = await this.agents.resolveAgent(sessionId)
       if ('error' in result) throw result.error
@@ -254,6 +255,15 @@ export class SessionController extends TypertRemoteService {
    */
   resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult> {
     return this.agents.resolveAgent(sessionId)
+  }
+
+  /**
+   * Release a fenced idle Session using the same lifecycle handle that published it.
+   * @param sessionId - reserved target checked for active work.
+   * @returns whether the Session is no longer attached.
+   */
+  retireForDeletion(sessionId: SessionId): Promise<boolean> {
+    return this.agents.retireForDeletion(sessionId)
   }
 
   /**

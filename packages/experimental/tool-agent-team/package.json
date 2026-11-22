@@ -57,6 +57,5 @@
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-llm-deepseek": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

@@ -64,6 +64,5 @@
     "@deepseek-ai/dsh-token-meter": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-user-approval": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

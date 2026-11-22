@@ -6,8 +6,28 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type { SpeechPreparationOptions, SpeechProvider, SpeechProviderId, SpeechProviderInfo, SpeechSnapshot, SpeechSelectionPatch, SpeechRequest, SpeechSpec, Transcript } from './types.ts'
+import type { SpeechStreamSpec, SpeechStreamEvent, SpeechSelection, SpeechAudioSource } from './types.ts'
 
 export type * from './types.ts'
+
+/** Sanitized recognition failure; usage remains unknown when not reported by the provider. */
+export class SpeechFailure extends Error {
+  /** Stable identity across separately loaded provider and consumer modules. */
+  readonly isDSHSpeechFailure: true = true
+  constructor(readonly code: 'unconfigured' | 'authentication' | 'network' | 'protocol' | 'provider' | 'limit' | 'timeout',
+    readonly usage: import('./types.ts').SpeechUsage = { inputTokens: null, outputTokens: null, audioSeconds: null }) {
+    super(`Speech recognition failed: ${code}`)
+  }
+}
+
+/** Recognize sanitized failures across native source/artifact module instances.
+ * @param error - provider failure.
+ * @returns marked failure, or undefined for an unrelated exception.
+ */
+export function speechFailureOf(error: unknown): SpeechFailure | undefined {
+  return typeof error === 'object' && error !== null && 'isDSHSpeechFailure' in error && error.isDSHSpeechFailure === true
+    ? error as SpeechFailure : undefined
+}
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -27,7 +47,7 @@ export interface Config {
 interface Registration {
   readonly provider: SpeechProvider
   readonly lifetime: AbortController
-  readonly pending: Set<Promise<Transcript>>
+  readonly pending: Set<Promise<unknown>>
   readonly unsubscribe: () => void
 }
 
@@ -181,6 +201,38 @@ export default class SpeechToText extends Service {
     const id = request.providerId ?? this.config.defaultProvider.get() as SpeechProviderId
     const language = request.language ?? this.config.language.get()
     return { provider: this.selectedProvider(id, language), audio: request.audio, language }
+  }
+
+  /** Resolve and pin a live recognizer without opening a connection.
+   * @param selection - explicit selection, or current defaults when omitted.
+   * @returns a provider supporting live recognition; never falls back to local inference.
+   */
+  resolveStream(selection?: SpeechSelection): SpeechStreamSpec {
+    const provider = this.selectedProvider(selection?.providerId ?? this.config.defaultProvider.get() as SpeechProviderId,
+      selection?.language ?? this.config.language.get())
+    if (provider.stream === undefined || provider.info.streaming === undefined) throw new Error('Selected speech provider does not support live recognition')
+    return { provider, language: selection?.language ?? this.config.language.get() }
+  }
+
+  /** Execute a pinned live recognizer, joining cleanup before registration withdrawal completes.
+   * @param spec - resolved provider identity and language.
+   * @param input - bounded one-use audio source.
+   * @param signal - caller lifetime.
+   * @returns ordered live recognition events.
+   */
+  async *stream(spec: SpeechStreamSpec, input: SpeechAudioSource, signal: AbortSignal): AsyncIterable<SpeechStreamEvent> {
+    signal.throwIfAborted()
+    const registration = this.providers.get(spec.provider.info.id)
+    if (registration?.provider !== spec.provider || spec.provider.stream === undefined) throw new Error('Resolved live recognizer is unavailable')
+    const combined = AbortSignal.any([signal, registration.lifetime.signal])
+    const settled = Promise.withResolvers<void>()
+    registration.pending.add(settled.promise)
+    try {
+      for await (const event of spec.provider.stream(input, spec.language, combined)) {
+        combined.throwIfAborted()
+        yield event
+      }
+    } finally { settled.resolve(); registration.pending.delete(settled.promise) }
   }
 
   /**

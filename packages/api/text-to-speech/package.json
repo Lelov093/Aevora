@@ -1,0 +1,63 @@
+{
+  "name": "@deepseek-ai/dsh-api-text-to-speech",
+  "description": "Authenticated speech synthesis Remote",
+  "version": "0.2.1-rc.3",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lelov093/Aevora.git",
+    "directory": "packages/api/text-to-speech"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types/types.js"
+    },
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json",
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "locale/*.json",
+    "lib/types/**/*.js",
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "lib/typert.host.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.remote-client.d.ts"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/schemastery": "workspace:~",
+    "zod": "4.4.3",
+    "@deepseek-ai/dsh-util-values": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-text-to-speech": "workspace:*",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-text-to-speech": "workspace:*",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:*"
+  }
+}

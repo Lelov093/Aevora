@@ -1,0 +1,18 @@
+# Optional Aevora plugins for the Desktop profile.
+- insert:
+    - id: aevora-control
+      name: '@deepseek-ai/dsh-experimental-aevora-control'
+    - id: aevora-identity
+      name: '@deepseek-ai/dsh-experimental-aevora-identity'
+    - id: aevora-memory
+      name: '@deepseek-ai/dsh-experimental-memory'
+    - id: aevora-conscious-ocean
+      name: '@deepseek-ai/dsh-experimental-conscious-ocean'
+    - id: aevora-conscious-ocean-trace-producer
+      name: '@deepseek-ai/dsh-experimental-conscious-ocean/trace-producer'
+      config:
+        budgetTokens: 1800
+        minimumRecallability: 0.1
+        policyVersion: memory-v1
+        compilerVersion: context-manifest-v1
+        attachPreparedManifest: true

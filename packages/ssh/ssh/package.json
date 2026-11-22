@@ -83,6 +83,5 @@
     "@deepseek-ai/dsh-lsp-stdio": "workspace:*",
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-util-values": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

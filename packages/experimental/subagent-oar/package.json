@@ -66,6 +66,5 @@
     "@deepseek-ai/dsh-tool-jobs": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-experimental-tool-subagent-oar": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

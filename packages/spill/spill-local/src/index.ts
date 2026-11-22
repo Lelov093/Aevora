@@ -15,6 +15,9 @@ import { tmpdir } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 import { SpillLocator, SpillStore } from '@deepseek-ai/dsh-spill'
 import type { SaveTextSpill, SpillRef } from '@deepseek-ai/dsh-spill'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type {} from '@deepseek-ai/dsh-session-persistence/deletion-journal'
+import { SessionArtifactRoot, type SessionDeletionArtifactOwner } from '@deepseek-ai/dsh-session-persistence/deletion-artifact-root'
 import { gatherSweepRoots, sweepSpillRoots } from './cleanup.ts'
 import type { SweepRoot, WarnFn } from './cleanup.ts'
 import { privateRoot, saveTextFile } from './store.ts'
@@ -35,6 +38,8 @@ export interface Config {
    * a local deployment. Set it to keep spill files under a known location.
    */
   root?: string
+  /** Dedicated artifact root for the managed deletion composition. */
+  managedArtifactRoot?: string
   /**
    * Age in days after which a spill file is eligible for the one-shot startup
    * cleanup sweep. Defaults to `30`; `0` disables cleanup entirely. Files whose
@@ -49,7 +54,14 @@ export interface Config {
 }
 
 /** The shape after schemastery applied the defaults. */
-type ResolvedConfig = Required<Omit<Config, 'root'>> & Pick<Config, 'root'>
+type ResolvedConfig = Required<Pick<Config, 'cleanupPeriodDays'>> & Omit<Config, 'cleanupPeriodDays'>
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Cleanup of spill data written to the managed artifact root. */
+    sessionDeletionSpill: SessionDeletionArtifactOwner
+  }
+}
 
 /**
  * Local-filesystem spill backend. Files land under `<root>/session-<hash>/…`
@@ -65,6 +77,7 @@ type ResolvedConfig = Required<Omit<Config, 'root'>> & Pick<Config, 'root'>
 export class LocalSpillStore extends SpillStore {
   static Config: z<Config> = z.object({
     root: z.string(),
+    managedArtifactRoot: z.string(),
     cleanupPeriodDays: z.number().step(1).min(0).default(30),
   })
 
@@ -79,6 +92,8 @@ export class LocalSpillStore extends SpillStore {
    * it; `undefined` when cleanup is disabled (`cleanupPeriodDays === 0`).
    */
   private cleanup: Promise<void> | undefined
+  private readonly managed: SessionArtifactRoot | undefined
+  private readonly writes = new Map<SessionId, Set<Promise<SpillRef>>>()
 
   constructor(ctx: Context, config: Config) {
     super(ctx)
@@ -86,6 +101,18 @@ export class LocalSpillStore extends SpillStore {
     // cast records that runtime fact for exactOptionalPropertyTypes.
     this.config = config as ResolvedConfig
     this.root = config.root !== undefined ? resolve(config.root) : privateRoot()
+    this.managed = config.managedArtifactRoot === undefined ? undefined : new SessionArtifactRoot(config.managedArtifactRoot)
+    const managed = this.managed
+    if (managed !== undefined) {
+      ctx.effect(() => ctx.provide('sessionDeletionSpill', {
+        removeDeletedSessions: async ids => {
+          this.assertDeletionMembers(ids)
+          for (const id of ids) await Promise.allSettled(this.writes.get(id) ?? [])
+          await managed.remove(ids)
+        },
+        verifyDeletedSessions: ids => managed.verify(ids),
+      }), 'provide managed spill cleanup')
+    }
 
     // One best-effort startup sweep, owned by the fiber. The generator body runs
     // at activation but does NOT await the sweep — it launches it and yields an
@@ -93,7 +120,7 @@ export class LocalSpillStore extends SpillStore {
     // never delayed yet a fiber unload reaches quiescence (no sweep I/O outlives
     // the fiber). Disabled (`cleanupPeriodDays === 0`) yields a no-op disposer.
     ctx.effect(function* (this: LocalSpillStore) {
-      if (this.config.cleanupPeriodDays > 0) {
+      if (this.managed === undefined && this.config.cleanupPeriodDays > 0) {
         const warn: WarnFn = (message) => { this.ctx.logger.warn(message) }
         this.cleanup = this.runCleanup(warn)
       }
@@ -147,8 +174,28 @@ export class LocalSpillStore extends SpillStore {
   }
 
   async saveText(input: SaveTextSpill): Promise<SpillRef> {
+    const id = input.owner.sessionId
+    if (id === undefined || this.managed === undefined) {
+      if (this.managed !== undefined) throw new Error('Managed spill requires a Session owner')
+      return this.saveInRoot(this.root, input)
+    }
+    const admission = this.ctx.get('sessionDeletionAdmission')
+    if (admission === undefined || admission.blocks(id)) throw new Error('Session is unavailable for managed spill')
+    const pending = this.writes.get(id) ?? new Set<Promise<SpillRef>>()
+    this.writes.set(id, pending)
+    const saved = this.managed.prepare(id).then(root => this.saveInRoot(root, input))
+    pending.add(saved)
+    try {
+      return await saved
+    } finally {
+      pending.delete(saved)
+      if (pending.size === 0) this.writes.delete(id)
+    }
+  }
+
+  private async saveInRoot(root: string, input: SaveTextSpill): Promise<SpillRef> {
     const saved = await saveTextFile({
-      root: this.root,
+      root,
       sessionId: input.owner.sessionId,
       suggestedName: input.suggestedName,
       content: input.content,
@@ -158,6 +205,11 @@ export class LocalSpillStore extends SpillStore {
       bytes: saved.bytes,
       retrievalHint: 'Use read with offset/limit, or grep this path to search within it.',
     }
+  }
+
+  private assertDeletionMembers(ids: readonly SessionId[]): void {
+    const journal = this.ctx.get('sessionDeletionJournal')
+    if (ids.some(id => !journal?.blocks(id))) throw new Error('Spill cleanup requires accepted Session deletion')
   }
 }
 

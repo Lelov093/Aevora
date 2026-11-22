@@ -60,6 +60,5 @@
     "@deepseek-ai/dsh-win32-process": "workspace:*",
     "@deepseek-ai/node-addon-system": "workspace:~",
     "@deepseek-ai/schemastery": "workspace:~"
-  },
-  "scripts": {}
+  }
 }

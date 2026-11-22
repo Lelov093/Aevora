@@ -6,6 +6,7 @@
     "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo"
   },
   "files": [
+    "src/aevora.ts",
     "src/azure-bloom.ts",
     "src/boot-theme.ts",
     "src/index.ts",

@@ -13,6 +13,7 @@ import * as ReactDomClient from 'react-dom/client'
 import * as Cordis from '@deepseek-ai/cordis'
 import * as Zod from 'zod'
 import * as ReactVirtual from '@tanstack/react-virtual'
+import * as TypertRemoteInfo from '@deepseek-ai/dsh-typert-protocol/remote-info'
 import * as ClientStore from '@deepseek-ai/dsh-client-store'
 import * as UiSlots from '@deepseek-ai/dsh-client-ui-slots'
 import * as UiPrimitives from '@deepseek-ai/dsh-client-ui-primitives'
@@ -35,6 +36,7 @@ export function getStaticModules(): Record<string, unknown> {
     '@deepseek-ai/cordis': Cordis,
     'zod': Zod,
     '@tanstack/react-virtual': ReactVirtual,
+    '@deepseek-ai/dsh-typert-protocol/remote-info': TypertRemoteInfo,
     '@deepseek-ai/dsh-client-store': ClientStore,
     '@deepseek-ai/dsh-client-ui-slots': UiSlots,
     '@deepseek-ai/dsh-client-ui-primitives': UiPrimitives,

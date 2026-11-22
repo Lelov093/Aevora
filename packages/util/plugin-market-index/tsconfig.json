@@ -9,6 +9,8 @@
     "src"
   ],
   "references": [
-    { "path": "../package-manifest" }
+    {
+      "path": "../package-manifest"
+    }
   ]
 }

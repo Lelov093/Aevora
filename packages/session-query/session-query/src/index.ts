@@ -96,6 +96,8 @@ declare module '@deepseek-ai/cordis' {
  * generations, and query execution on the same `ctx.sessionQuery` service.
  */
 export abstract class SessionQueryEngine extends Service {
+  /** Drop persisted and live search rows for accepted deletion members, when the backend owns an index. */
+  removeDeletedSessions?(ids: readonly SessionId[]): Promise<void>
   static inject = ['sessions']
 
   private readonly _readWindowMax: number

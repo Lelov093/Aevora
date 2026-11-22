@@ -61,6 +61,5 @@
     "@deepseek-ai/dsh-subprocess": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tool-subagent": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

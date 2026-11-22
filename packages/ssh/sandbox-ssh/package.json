@@ -41,6 +41,5 @@
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-ssh": "workspace:*",
     "@deepseek-ai/dsh-sandbox": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

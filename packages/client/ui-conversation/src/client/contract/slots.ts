@@ -290,6 +290,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.input.dock': { kind: 'list'; scope: 'session'; owner: InputZone }
     /** Floating entries rendered inside the resident composer card. */
     'conversation.input.overlay': { kind: 'list'; scope: 'session' }
+    /** Transient content inside the editor scrollport, separate from the editable draft. */
+    'conversation.input.preview': { kind: 'list'; scope: 'session' }
     /** Ambient entries below the composer card. */
     'conversation.composer.dock': { kind: 'list'; scope: 'session' }
     /** Compact controls at the left of the composer tool row. */
@@ -298,6 +300,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.input.right': { kind: 'list'; scope: 'session' }
     /** Compact action after the model selector; it can expand across the toolbar while retaining the editor and submit action. */
     'conversation.input.activity': { kind: 'single'; scope: 'session'; owner: InputActivityOwnerProps }
+    /** Primary control for an idle composer with no text or attachments. */
+    'conversation.input.empty-action': { kind: 'chain'; scope: 'session'; owner: InputEmptyActionOwnerProps }
     /** Resident composer body, including the no-Session inert state. */
     'conversation.composer.bar': { kind: 'single'; scope: 'session-maybe'; owner: ComposerBarOwnerProps }
     /** Optional draft-attachment rail and drop target. */
@@ -557,14 +561,22 @@ export interface InputActivityOwnerProps extends InputControlOwnerProps {
   onActiveChange: (active: boolean) => void
 }
 
+/** Presentation supplied to the primary control of an empty composer. */
+export interface InputEmptyActionOwnerProps {
+  /** The current input can use an alternate action when idle and empty. */
+  enabled: boolean
+  /** Shares the default submit control's size and placement. */
+  className: string | undefined
+}
+
 /** Full props of the resident composer bar. */
 export type ComposerBarProps =
   PropsRuntime<'conversation.composer.bar'>
   & PropsRenderSlots<
-    | 'conversation.input.attachments' | 'conversation.input.overlay'
+    | 'conversation.input.attachments' | 'conversation.input.overlay' | 'conversation.input.preview'
     | 'conversation.input.permission'
     | 'conversation.input.left' | 'conversation.input.plan'
-    | 'conversation.input.right' | 'conversation.input.model' | 'conversation.input.activity'
+    | 'conversation.input.right' | 'conversation.input.model' | 'conversation.input.activity' | 'conversation.input.empty-action'
     | 'conversation.composer.dock'
   >
   & InjectFace<ComposerBarInjected>

@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  CodeBlock, DiffBlock, DisclosureRow, IconInspectOutlineRegular, ReadBlock, SearchBlock,
+  AevoraStatusMark, CodeBlock, DiffBlock, DisclosureRow, IconInspectOutlineRegular, ReadBlock, SearchBlock,
   TerminalBlock, TextShimmer, WebBlock,
   diffTotals,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -179,6 +179,15 @@ export const ToolRow = memo(function ToolRow({
   )
   const status = stateStatus(state, t)
   const running = state === 'running' || state === 'preparing'
+  const leadingIcon = state === 'preparing'
+    ? <AevoraStatusMark kind="waiting" size={14} />
+    : state === 'running'
+      ? <AevoraStatusMark kind="tool" size={14} />
+      : state === 'error'
+        ? <AevoraStatusMark kind="error" size={14} />
+        : state === 'stopped'
+          ? <AevoraStatusMark kind="stopped" size={14} />
+          : icon
   const normalSummary = terminalBody?.description ?? (open ? detailsBody?.expandedSummary ?? summary : summary)
   const exitLabel = terminalExitLabel(terminal, t)
   // Generic failures retain their first result line; command exits keep their description.
@@ -377,7 +386,7 @@ export const ToolRow = memo(function ToolRow({
         rowClassName={css.row}
         leadingClassName={css.leading}
         titleClassName={css.title}
-        icon={icon}
+        icon={leadingIcon}
         title={title}
         running={running}
         open={open}

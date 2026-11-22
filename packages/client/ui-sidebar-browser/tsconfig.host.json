@@ -10,7 +10,11 @@
     "src/types.ts"
   ],
   "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../util/brand" }
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../util/brand"
+    }
   ]
 }

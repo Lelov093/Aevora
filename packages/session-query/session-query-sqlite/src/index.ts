@@ -8,7 +8,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import { SESSION_FORMAT_VERSION, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { DatabaseSync } from 'node:sqlite'
 import { Context, Service, type Fiber } from '@deepseek-ai/cordis'
+import { stat } from 'node:fs/promises'
 import z from '@deepseek-ai/schemastery'
+import type {} from '@deepseek-ai/dsh-session-persistence/deletion-journal'
 import type { Session, SessionEvent, SessionHeader, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
 import type {
@@ -201,6 +203,45 @@ interface CursorPayload {
 
 /** Concrete SQLite owner of the combined `ctx.sessionQuery` service. */
 export class SqliteSessionQueryEngine extends SessionQueryEngine {
+  /**
+   * Remove accepted Session rows from both index surfaces without rebuilding unrelated documents.
+   * @param ids - members present in the managed deletion journal.
+   */
+  override async removeDeletedSessions(ids: readonly SessionId[]): Promise<void> {
+    const journal = this.ctx.get('sessionDeletionJournal')
+    if (ids.some(id => !journal?.blocks(id))) throw new Error('Search cleanup requires accepted Session deletion')
+    await this._serialized(undefined, async () => {
+      if (this._db === undefined) {
+        const path = this.config.path
+        if (path === ':memory:') return
+        try {
+          await stat(path)
+        } catch (error: unknown) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+          throw error
+        }
+        await this._ensureReady(undefined)
+      }
+      const db = this._requireDb()
+      const generation = this._mainGeneration() + 1
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        for (const id of ids) {
+          this._deleteSession('persisted', id)
+          this._deleteSession('live', id)
+        }
+        db.prepare('UPDATE search_state SET global_generation = ? WHERE singleton = 1').run(generation)
+        db.exec('COMMIT')
+      } catch (error: unknown) {
+        try {
+          db.exec('ROLLBACK')
+        } catch (rollback: unknown) {
+          throw new AggregateError([error, rollback], 'Session search cleanup could not roll back')
+        }
+        throw error
+      }
+    })
+  }
   static override inject = ['sessions']
 
   static Config: z<Config> = z.object({

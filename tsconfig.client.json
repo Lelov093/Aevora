@@ -8,6 +8,11 @@
     ]
   },
   "include": [],
+  "exclude": [
+    "packages/client/*/tests/**/*.host.spec.ts",
+    "packages/client/*/tests/**/*.host.e2e.ts",
+    "packages/client/*/tests/**/*.host.ts"
+  ],
   "references": [
     {
       "path": "./packages/experimental/client-ui-action-cards"
@@ -17,6 +22,15 @@
     },
     {
       "path": "./packages/experimental/client-ui-plugin-recommendations"
+    },
+    {
+      "path": "./packages/experimental/memory/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/experimental/aevora-identity/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/experimental/aevora-control/tsconfig.client.json"
     },
     {
       "path": "./packages/client/ui-file-drag"
@@ -37,7 +51,7 @@
       "path": "./packages/util/atomic-write"
     },
     {
-      "path": "./packages/experimental/client-ui-voice-input"
+      "path": "./packages/experimental/client-ui-voice-input/tsconfig.client.json"
     },
     {
       "path": "./packages/experimental/client-ui-claude-code-mods"
@@ -181,6 +195,9 @@
       "path": "./packages/experimental/client-ui-agent-team"
     },
     {
+      "path": "./packages/experimental/conscious-ocean"
+    },
+    {
       "path": "./packages/client/ui-dockkit"
     },
     {
@@ -308,7 +325,9 @@
     },
     {
       "path": "./apps/web"
+    },
+    {
+      "path": "./packages/client/ui-voice"
     }
-  ],
-  "files": []
+  ]
 }

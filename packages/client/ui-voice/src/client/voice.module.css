@@ -1,0 +1,17 @@
+.section { display: flex; flex-direction: column; max-width: 720px; gap: 12px; padding: 20px; border: 0.5px solid var(--aevora-border-soft, var(--dsw-alias-border-l3)); border-radius: var(--aevora-radius-card, var(--dsw-radius-md)); background: var(--aevora-surface-canvas, var(--dsw-alias-bg-base)); box-shadow: var(--aevora-shadow-card, none); font-size: 13px; line-height: 1.6; color: var(--dsw-alias-label-primary); }
+.section h2 { margin: 0; font-size: 16px; font-weight: 500; }
+.section h3 { margin: 0; font-size: 14px; font-weight: 500; }
+.section p { margin: 0; }
+.link { align-self: flex-start; border: none; padding: 0; background: transparent; color: var(--dsw-alias-link); cursor: pointer; font: inherit; }
+.action { display: inline-flex; align-items: center; justify-content: center; width: calc(28px + var(--dsh-content-font-delta, 0px)); height: calc(28px + var(--dsh-content-font-delta, 0px)); padding: 6px; border: none; border-radius: var(--dsw-radius-sm); background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; }
+.action svg { width: calc(15px + var(--dsh-content-font-delta, 0px)); height: calc(15px + var(--dsh-content-font-delta, 0px)); }
+.action:disabled { cursor: default; opacity: 0.4; }
+@media (hover: hover) { .action:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); } }
+.streamControls { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.streamToggle { display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: var(--dsw-radius-sm); padding: 4px 6px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; cursor: pointer; }
+.streamToggle svg { width: 15px; height: 15px; }
+.streamToggle[aria-pressed=true] { background: var(--aevora-selection-gradient, var(--dsw-alias-interactive-bg-hover)); color: var(--dsw-alias-link); }
+.streamToggle:disabled { opacity: 0.4; cursor: default; }
+.streamStatus { color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.pauseStatus { flex-basis: 100%; max-width: 320px; }
+@media (max-width: 600px) { .streamToggle span, .streamStatus { display: none; } }

@@ -117,6 +117,5 @@
     "@deepseek-ai/dsh-user-approval": "workspace:*",
     "@deepseek-ai/dsh-client-connection": "workspace:*",
     "@types/hosted-git-info": "^3.0.5"
-  },
-  "scripts": {}
+  }
 }

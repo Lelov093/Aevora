@@ -64,6 +64,5 @@
     "@deepseek-ai/dsh-subagent": "workspace:*",
     "@deepseek-ai/dsh-subagent-fork-in-process": "workspace:*",
     "@deepseek-ai/dsh-subagent-spawn-in-process": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

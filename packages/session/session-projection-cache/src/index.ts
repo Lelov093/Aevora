@@ -388,11 +388,22 @@ export class SessionProjectionCache extends Service {
 
   /** Replace one session's stored record with its log identity and a detached snapshot of `rows`. */
   private async put(id: SessionId, identity: CheckpointIdentity, rows: ProjectionCheckpoint): Promise<void> {
+    if (this.ctx.get('sessionDeletionJournal')?.blocks(id)) return
     const detached = snapshotJsonValue(rows)
     if (detached === undefined) {
       throw new TypeError('projection checkpoint is not losslessly JSON-serializable (a unit state violates the plain-JSON contract)')
     }
     await this.requireTable().put(id, { identity, rows: detached as CheckpointRecord['rows'] })
+  }
+
+  /**
+   * Remove per-Session checkpoints after the managed journal has fenced writes.
+   * @param ids - durably accepted deletion targets.
+   */
+  async removeDeletedSessions(ids: readonly SessionId[]): Promise<void> {
+    const journal = this.ctx.get('sessionDeletionJournal')
+    if (ids.some(id => !journal?.blocks(id))) throw new Error('Projection cache cleanup requires accepted Session deletion')
+    for (const id of ids) await this.requireTable().delete(id)
   }
 
   private requireTable(): KvTable<SessionId, CheckpointRecord> {
@@ -470,3 +481,4 @@ function lifecycleIdentityMatches(
 }
 
 export default SessionProjectionCache
+import type {} from '@deepseek-ai/dsh-session-persistence/deletion-journal'

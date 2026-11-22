@@ -261,8 +261,8 @@
   align-items: flex-start;
   --dsh-chat-flow-gap: 12px;
   --dsh-running-follow: calc(4px + 24px + var(--dsh-content-font-delta, 0px));
-  --dsw-alias-label-shimmer: var(--dsw-alias-label-deep-diving-shimmer);
-  color: var(--dsw-alias-label-deep-diving);
+  --dsw-alias-label-shimmer: var(--aevora-color-cyan, var(--dsw-alias-label-deep-diving-shimmer));
+  color: var(--aevora-color-blue, var(--dsw-alias-label-deep-diving));
   font-size: calc(var(--dsh-content-font-size, 14px) - 2px);
   line-height: calc(22px + var(--dsh-content-font-delta, 0px));
 }
@@ -309,44 +309,6 @@
 .runningText {
   min-width: 0;
   font-variant-numeric: tabular-nums;
-}
-
-.runningIcon {
-  position: relative;
-  display: inline-flex;
-  flex: none;
-  width: calc(14px + var(--dsh-content-font-delta, 0px));
-  height: calc(14px + var(--dsh-content-font-delta, 0px));
-  /* The fixed footprint contains the animation's layout and paint. */
-  contain: strict;
-  overflow: hidden;
-}
-
-.runningWhaleAnimated {
-  display: none;
-  position: absolute;
-  inset: 0;
-}
-
-.runningWhaleStill {
-  display: initial;
-}
-
-@supports (mask-mode: alpha) and (mask-image: url('')) {
-  @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
-    .runningWhaleAnimated {
-      display: block;
-      background: currentColor;
-      mask: url('../assets/running-whale@2x.png') center / 100% 100% no-repeat;
-      mask-mode: alpha;
-      /* Keep animated-mask repaints on an icon-sized composited layer. */
-      will-change: transform;
-    }
-
-    .runningWhaleStill {
-      display: none;
-    }
-  }
 }
 
 .openError {

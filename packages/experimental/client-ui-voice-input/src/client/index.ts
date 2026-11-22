@@ -1,6 +1,7 @@
 /** Browser entry for the optional speech Remote contribution and composer control. */
 import type { Context } from '@deepseek-ai/cordis'
 import speechRemote from '@deepseek-ai/dsh-experimental-api-speech-to-text/remote'
+import turnsRemote from '@deepseek-ai/dsh-experimental-voice-turns/remote'
 import { mountVoiceInput } from './mount.ts'
 
 export { inject } from './mount.ts'
@@ -11,5 +12,5 @@ export { inject } from './mount.ts'
  * @returns complete UI and Remote disposer.
  */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
-  return await mountVoiceInput(ctx, speechRemote)
+  return await mountVoiceInput(ctx, speechRemote, turnsRemote)
 }

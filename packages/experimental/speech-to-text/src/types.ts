@@ -17,6 +17,8 @@ export interface SpeechProviderInfo {
   readonly id: SpeechProviderId
   readonly name: string
   readonly location: 'host-local' | 'cloud'
+  /** Live PCM16 mono intake format; absent when only complete recordings are supported. */
+  readonly streaming?: { readonly sampleRate: number }
   /** Accepted language hints, including automatic detection when supported. */
   readonly languages: readonly string[]
   readonly setupEstimate?: SpeechSetupEstimate
@@ -108,7 +110,8 @@ export interface SpeechInput {
 export interface Transcript {
   readonly text: string
   readonly audioSeconds: number
-  readonly inferenceSeconds: number
+  /** Pure recognition compute time, or null when the provider does not report it. */
+  readonly inferenceSeconds: number | null
 }
 
 /** One replaceable recognizer. It owns preparation, execution, and cancellation. */
@@ -122,6 +125,37 @@ export interface SpeechProvider {
    * @returns final text and measured audio/inference durations.
    */
   transcribe(input: SpeechInput, signal: AbortSignal): Promise<Transcript>
+  /**
+   * Recognize ordered PCM16 mono chunks. Exhaustion finishes input; cancellation discards it.
+   * @param input - bounded ordered source factory; it must cancel pending reads with the supplied task signal.
+   * @param language - resolved language hint.
+   * @param signal - caller and registration lifetime.
+   * @returns partial replacements, immutable finals and task accounting; absent for offline-only recognizers.
+   */
+  stream?(input: SpeechAudioSource, language: string, signal: AbortSignal): AsyncIterable<SpeechStreamEvent>
+}
+
+/** Provider passes its complete task signal; the consumer owns cancellation-aware input reads. */
+export type SpeechAudioSource = (signal: AbortSignal) => AsyncIterable<Uint8Array>
+
+/** Cumulative provider-reported counters; null means not reported, including on cancellation. */
+export interface SpeechUsage {
+  readonly inputTokens: number | null
+  readonly outputTokens: number | null
+  readonly audioSeconds: number | null
+}
+
+/** One task's ordered observations. Accepted bytes mean written to the provider socket, not recognized. */
+export type SpeechStreamEvent =
+  | { readonly kind: 'accepted'; readonly bytes: number }
+  | { readonly kind: 'sentence'; readonly id: number; readonly text: string; readonly final: boolean; readonly beginMs: number | null; readonly endMs: number | null }
+  | { readonly kind: 'usage'; readonly usage: SpeechUsage }
+  | { readonly kind: 'done'; readonly usage: SpeechUsage }
+
+/** Provider-pinned live recognition selection. */
+export interface SpeechStreamSpec {
+  readonly provider: SpeechProvider
+  readonly language: string
 }
 
 /** Caller selection before composition defaults are resolved. */

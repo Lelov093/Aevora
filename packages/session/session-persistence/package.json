@@ -18,11 +18,26 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./deletion-journal": {
+      "types": "./lib/types/deletion-journal.d.ts",
+      "default": "./lib/types/deletion-journal.js"
+    },
+    "./deletion-identity": {
+      "types": "./lib/types/deletion-identity.d.ts",
+      "default": "./lib/types/deletion-identity.js"
+    },
+    "./deletion-artifact-root": {
+      "types": "./lib/types/deletion-artifact-root.d.ts",
+      "default": "./lib/types/deletion-artifact-root.js"
+    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/index.js",
+    "lib/types/deletion-journal.js",
+    "lib/types/deletion-identity.js",
+    "lib/types/deletion-artifact-root.js",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
@@ -36,11 +51,14 @@
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-scope": "workspace:*",
+    "@deepseek-ai/dsh-storage": "workspace:*",
+    "@deepseek-ai/dsh-storage-json": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-timeout": "workspace:*"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-util-values": "workspace:*"
-  },
-  "scripts": {}
+    "@deepseek-ai/dsh-storage-domain": "workspace:*",
+    "@deepseek-ai/dsh-util-values": "workspace:*",
+    "zod": "4.4.3"
+  }
 }

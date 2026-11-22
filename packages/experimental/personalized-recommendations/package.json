@@ -66,6 +66,5 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
-  },
-  "scripts": {}
+  }
 }

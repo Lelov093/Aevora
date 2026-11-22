@@ -131,6 +131,5 @@
     "@deepseek-ai/dsh-tool-fs": "workspace:*",
     "@deepseek-ai/dsh-session-persistence-jsonl": "workspace:*",
     "@deepseek-ai/dsh-working-directory": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

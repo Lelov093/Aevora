@@ -2,9 +2,9 @@
 import { memo, useCallback, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import {
   IconAgentPresetOutlineRegular, IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
-  IconChevronUpOutlineRegular, IconCodeOutlineRegular, IconEditOutlineRegular, IconGlobeOutlineRegular,
-  IconPlanOutlineRegular, IconQuestionOutlineRegular, IconSearchOutlineRegular, IconSparkleRegular,
-  IconThinkOutlineRegular, TextShimmer,
+  IconChevronUpOutlineRegular, IconCodeOutlineRegular, IconEditOutlineRegular,
+  IconPlanOutlineRegular, IconQuestionOutlineRegular,
+  AevoraStatusMark, TextShimmer,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { GroupKey, NodeReference } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ProcessActivity } from '../contract/process-groups.ts'
@@ -36,20 +36,20 @@ interface LiveProcessTitle {
 }
 
 const PROCESS_ICONS: Record<ProcessTitleActivity, ReactNode> = {
-  thinking: <IconThinkOutlineRegular />,
+  thinking: <AevoraStatusMark kind="thinking" size={14} />,
   read: <IconBrowseOutlineRegular size={14} />,
   readImage: <IconBrowseOutlineRegular size={14} />,
-  search: <IconSearchOutlineRegular size={14} />,
+  search: <AevoraStatusMark kind="search" size={14} />,
   edit: <IconEditOutlineRegular size={14} />,
   write: <IconEditOutlineRegular size={14} />,
   commands: <IconApiOutlineRegular />,
   code: <IconCodeOutlineRegular size={14} />,
-  webSearch: <IconGlobeOutlineRegular />,
+  webSearch: <AevoraStatusMark kind="search" size={14} />,
   webFetch: <IconBrowseOutlineRegular size={14} />,
   subagents: <IconAgentPresetOutlineRegular size={14} />,
   plan: <IconPlanOutlineRegular />,
   questions: <IconQuestionOutlineRegular />,
-  tools: <IconSparkleRegular size={14} />,
+  tools: <AevoraStatusMark kind="tool" size={14} />,
 }
 
 function sameLiveProcessTitle(left: LiveProcessTitle, right: LiveProcessTitle): boolean {

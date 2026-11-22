@@ -146,11 +146,12 @@ export async function publishNewFileWin32(existing: string, replacement: string)
  * death — the object is destroyed, so a successor's create starts fresh.
  * @param path - the lock file path the name is derived from (case-folded:
  *   Windows paths are case-insensitive).
+ * @param namespace - kernel namespace, global when the lock protects a managed storage root.
  * @returns the open semaphore handle, released via {@link releaseLockHandleWin32}.
  */
-export async function acquireLockHandleWin32(path: string): Promise<number> {
+export async function acquireLockHandleWin32(path: string, namespace: 'Local' | 'Global' = 'Local'): Promise<number> {
   const api = await win32()
-  const name = `Local\\dsh-session-lock-${createHash('sha256').update(resolve(path).toLowerCase()).digest('hex')}`
+  const name = `${namespace}\\dsh-session-lock-${createHash('sha256').update(resolve(path).toLowerCase()).digest('hex')}`
   const handle = api.createSemaphoreW(null, 1, 1, name)
   if (handle === 0) throw win32Error('CreateSemaphoreW', api.getLastError(), path, name)
   const wait = api.waitForSingleObject(handle, 0)

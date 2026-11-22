@@ -30,6 +30,9 @@
       "path": "../session-persistence"
     },
     {
+      "path": "../../storage/storage-domain"
+    },
+    {
       "path": "../session-format"
     },
     {

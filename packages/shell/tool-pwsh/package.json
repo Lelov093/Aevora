@@ -67,6 +67,5 @@
     "@deepseek-ai/dsh-user-approval": "workspace:*",
     "@deepseek-ai/dsh-working-directory": "workspace:*",
     "@deepseek-ai/dsh-fs-local": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

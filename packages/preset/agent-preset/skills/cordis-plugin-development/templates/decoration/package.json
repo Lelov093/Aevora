@@ -27,6 +27,5 @@
         "@deepseek-ai/dsh-client-ui-conversation"
       ]
     }
-  },
-  "scripts": {}
+  }
 }

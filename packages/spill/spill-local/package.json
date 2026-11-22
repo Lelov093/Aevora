@@ -29,6 +29,7 @@
   ],
   "license": "MIT",
   "peerDependencies": {
+    "@deepseek-ai/dsh-session-persistence": "workspace:*",
     "@deepseek-ai/dsh-spill": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~"
   },
@@ -43,6 +44,5 @@
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-spill": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~"
-  },
-  "scripts": {}
+  }
 }

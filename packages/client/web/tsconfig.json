@@ -12,6 +12,9 @@
       "path": "../store"
     },
     {
+      "path": "../../typert/protocol"
+    },
+    {
       "path": "../../../vendor/cordis"
     },
     {

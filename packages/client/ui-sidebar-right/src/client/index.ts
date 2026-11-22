@@ -42,6 +42,7 @@ import { SidebarSessionViews } from './session-views.ts'
 import { createSidebarRightController, type SidebarRightController } from './service.ts'
 import { SidebarRightTabRegistry } from './tab-registry.ts'
 import { createSidebarRightStore } from './stores.ts'
+import { clearSidebarLayout } from './persistence.ts'
 import { en, ja, es, fr, de, ru, pt, zh } from './locales.ts'
 import { GUIDE_ID, guideDefinition } from './tabs/guide/definition.ts'
 import { createGuidePins } from './tabs/guide/guide-pins.ts'
@@ -101,6 +102,9 @@ declare module '@deepseek-ai/cordis' {
  * @param ctx - client root context carrying the slot registry, the frame's face, and copy.
  */
 export function apply(ctx: ClientContext): void {
+  ctx.on('client/session-deleted', ids => {
+    for (const id of ids) clearSidebarLayout(id)
+  })
   // The registry and the face it backs are built here, at apply's top level,
   // and never inside an effect. A registry other packages register into cannot
   // have an effect-internal scope as its host: `register()` adds an effect to

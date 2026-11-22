@@ -52,6 +52,5 @@
     "@deepseek-ai/dsh-hmr": {
       "optional": true
     }
-  },
-  "scripts": {}
+  }
 }

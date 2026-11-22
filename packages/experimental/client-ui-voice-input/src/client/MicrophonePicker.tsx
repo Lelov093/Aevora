@@ -14,15 +14,17 @@ function InputLevel({ recording, label }: { recording: Recording; label: string 
   const meter = useRef<HTMLSpanElement>(null)
   useEffect(() => {
     const bars = Array.from((meter.current as HTMLSpanElement).children)
-    let frame: number
+    const reducedMotion = typeof globalThis.matchMedia === 'function'
+      && globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches
+    let frame: number | undefined
     const draw = (): void => {
       const decibels = 20 * Math.log10(Math.max(recording.amplitude(), 0.00001))
       const count = Math.ceil(Math.max(0, Math.min(1, (decibels + 60) / 60)) * bars.length)
       for (const [index, bar] of bars.entries()) bar.setAttribute('data-active', String(index < count))
-      frame = requestAnimationFrame(draw)
+      if (!reducedMotion) frame = requestAnimationFrame(draw)
     }
     draw()
-    return () => { cancelAnimationFrame(frame) }
+    return () => { if (frame !== undefined) cancelAnimationFrame(frame) }
   }, [recording])
   return <span ref={meter} className={css.inputLevel} role="img" aria-label={label}>
     {Array.from({ length: 8 }, (_, index) => <span key={index} />)}

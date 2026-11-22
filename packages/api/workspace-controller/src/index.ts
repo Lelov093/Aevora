@@ -7,6 +7,8 @@ import type {} from '@deepseek-ai/dsh-api-remote-access'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { WorkspaceCommands } from './commands.ts'
 import { DirectoryPickerController } from './directory-picker.ts'
+import { SessionDeletionRemote } from './session-deletion/remote.ts'
+import { mountSessionDeletionOwners, sessionDeletionOwnersInject, type SessionDeletionHostConfig } from './session-deletion/owners.ts'
 import { WorkspaceFeed, workspaceView } from './feed.ts'
 import { defaultWorkspaceDirectory, validateDocumentsDirectory } from './default-directory.ts'
 import type {
@@ -39,10 +41,14 @@ export interface Config {
   documentsDirectory?: string
   /** Maximum duration of the operating system's Documents lookup. */
   documentsLookupTimeoutMs?: number
+  /** Lifetime of an uncommitted Session deletion preview. */
+  deletionPreviewTtlMs?: number
+  /** Maximum live previews held for the authenticated browser owner. */
+  deletionPreviewCapacity?: number
 }
 
 /** Directory policy after schema defaults have been applied. */
-type ResolvedConfig = Config & { documentsLookupTimeoutMs: number }
+type ResolvedConfig = Config & { documentsLookupTimeoutMs: number; deletionPreviewTtlMs: number; deletionPreviewCapacity: number }
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -58,6 +64,8 @@ export class WorkspaceController extends TypertRemoteService {
   static Config: z<Config, ResolvedConfig> = z.object({
     documentsDirectory: z.string(),
     documentsLookupTimeoutMs: z.natural().min(1).default(10_000),
+    deletionPreviewTtlMs: z.natural().min(1).default(300_000),
+    deletionPreviewCapacity: z.natural().min(1).default(32),
   })
 
   private readonly config: ResolvedConfig
@@ -80,6 +88,12 @@ export class WorkspaceController extends TypertRemoteService {
     // stays pending until a picking backend is composed, so a host without one
     // registers no picking namespace instead of answering an unservable verb.
     ctx.plugin(DirectoryPickerController)
+    ctx.plugin(SessionDeletionRemote)
+    const deletionConfig: SessionDeletionHostConfig = {
+      previewTtlMs: this.config.deletionPreviewTtlMs,
+      previewCapacity: this.config.deletionPreviewCapacity,
+    }
+    ctx.inject(sessionDeletionOwnersInject, (owner) => { mountSessionDeletionOwners(owner, deletionConfig) })
   }
 
   /**

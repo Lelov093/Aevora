@@ -1,6 +1,6 @@
 /**
  * Browser theme registry over the `--dsw-*` token stylesheets. The service
- * owns the live theme preference (light/dark/system/Azure Bloom), resolves `system` through
+ * owns the live theme preference (light/dark/system/Azure Bloom/Aevora), resolves `system` through
  * `prefers-color-scheme`, and publishes immutable snapshots; it never touches
  * the DOM — ui-layout's presenter consumes the resolved snapshot. The Host
  * settings scope loads and stores the preference in the user-settings
@@ -28,6 +28,7 @@ import { ICON_SYMBOLS, type IconSymbolId } from '@deepseek-ai/dsh-client-ui-prim
 import { installIconSprite, type IconReplacements } from './icon-sprite.ts'
 import { installThemeStyles } from './styles.ts'
 import { AZURE_BLOOM_TOKENS } from '../azure-bloom.ts'
+import { AEVORA_TOKENS } from '../aevora.ts'
 import { en, ja, es, fr, de, ru, pt, zh, type ThemeKey } from './locales.ts'
 import {
   DEFAULT_FONT_SIZES, DEFAULT_PREFERENCE, FONT_FAMILY_FIELDS, FONT_ROLES, FONT_SIZE_SPECS,
@@ -150,6 +151,7 @@ const BUILTIN_THEMES: readonly ThemeDefinition[] = Object.freeze([
   Object.freeze({ id: 'light', colorScheme: 'light' as const, tokens: Object.freeze({}) }),
   Object.freeze({ id: 'dark', colorScheme: 'dark' as const, tokens: Object.freeze({}) }),
   Object.freeze({ id: 'azure-bloom', colorScheme: 'light' as const, tokens: AZURE_BLOOM_TOKENS }),
+  Object.freeze({ id: 'aevora', colorScheme: 'light' as const, tokens: AEVORA_TOKENS }),
 ])
 
 const BUILTIN_INSPECT_TOKENS: readonly ThemeTokenInspection[] = Object.freeze([
@@ -170,8 +172,8 @@ const BUILTIN_INSPECT_TOKENS: readonly ThemeTokenInspection[] = Object.freeze([
 ])
 
 /**
- * Theme registry and preference owner. `light`, `dark`, and `azure-bloom` are built in (the base
- * stylesheets carry both palettes); third-party themes register alias-layer
+ * Theme registry and preference owner. `light`, `dark`, `azure-bloom` (Azure Bloom), and
+ * `aevora` are built in (the base stylesheets carry both palettes); third-party themes register alias-layer
  * overrides. Reads go through {@link getTheme}; preference writes only
  * through {@link setTheme}; continuous sync only through the `theme/change`
  * event. {@link overrideTokens} stacks partial token layers over the active

@@ -4,13 +4,27 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../../vendor/cosmokit" },
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../../vendor/schemastery" },
-    { "path": "../../llm/llm" },
-    { "path": "../../util/timeout" },
-    { "path": "../session-title" }
+    {
+      "path": "../../../vendor/cosmokit"
+    },
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../util/timeout"
+    },
+    {
+      "path": "../session-title"
+    }
   ]
 }

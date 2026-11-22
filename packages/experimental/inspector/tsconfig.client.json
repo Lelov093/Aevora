@@ -93,14 +93,30 @@
     "src/shared/web.ts"
   ],
   "references": [
-    { "path": "../../client/ui-renderer" },
-    { "path": "../../client/ui-layout" },
-    { "path": "../../client/shortcuts/tsconfig.client.json" },
-    { "path": "../../client/store" },
-    { "path": "../../client/ui-slots" },
-    { "path": "../../client/ui-primitives" },
-    { "path": "../../client/locale/tsconfig.client.json" },
-    { "path": "../../client/connection/tsconfig.client.json" },
+    {
+      "path": "../../client/ui-renderer"
+    },
+    {
+      "path": "../../client/ui-layout"
+    },
+    {
+      "path": "../../client/shortcuts/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/store"
+    },
+    {
+      "path": "../../client/ui-slots"
+    },
+    {
+      "path": "../../client/ui-primitives"
+    },
+    {
+      "path": "../../client/locale/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/connection/tsconfig.client.json"
+    },
     {
       "path": "../../util/brand"
     },

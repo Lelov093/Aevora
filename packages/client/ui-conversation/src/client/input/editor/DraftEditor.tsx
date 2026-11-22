@@ -22,6 +22,7 @@ export interface DraftEditorProps {
   readonly onWorkspaceKeyDown: KeyboardEventHandler<HTMLDivElement>
   readonly hint: string | null
   readonly showPlaceholder: boolean
+  readonly preview?: ReactNode
 }
 
 /**
@@ -31,10 +32,11 @@ export interface DraftEditorProps {
  */
 export function DraftEditor({
   classNames: css, editor, scrollRef, editable, editorDisabled, phase, placeholderText, ariaLabel,
-  workspaceTrigger, workspacePickerOpen, onWorkspaceKeyDown, hint, showPlaceholder,
+  workspaceTrigger, workspacePickerOpen, onWorkspaceKeyDown, hint, showPlaceholder, preview,
 }: DraftEditorProps): ReactNode {
   return (
     <div ref={scrollRef} className={css.scroll} data-input-scroll>
+      {preview}
       <HoverCardGroup className={css.grow}>
         <ComposerContentEditable
           editor={workspaceTrigger ? null : editor}

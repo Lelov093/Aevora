@@ -27,6 +27,7 @@ declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
 }
 
 interface AssistantState {
+  readonly attemptSeq: number | undefined
   readonly turn: number
   readonly step: number
   readonly blocks: readonly (AssistantBlock | undefined)[]
@@ -38,8 +39,9 @@ interface AssistantState {
   readonly usage: unknown
 }
 
-function initialState(turn: number, step: number): AssistantState {
+function initialState(turn: number, step: number, attemptSeq?: number): AssistantState {
   return {
+    attemptSeq,
     turn,
     step,
     blocks: [],
@@ -79,9 +81,9 @@ function hasInterruptionEvidence(blocks: readonly AssistantBlock[]): boolean {
   })
 }
 
-function resetForRetry(state: AssistantState): AssistantState {
+function resetForRetry(state: AssistantState, attemptSeq?: number): AssistantState {
   return {
-    ...initialState(state.turn, state.step),
+    ...initialState(state.turn, state.step, attemptSeq),
     firstTokenTime: state.firstTokenTime,
   }
 }
@@ -241,7 +243,7 @@ function fallbackState(context: ConversationNodeContext<AssistantState>): Assist
       continue
     }
     if (match.event.type === 'llm/retry' && state !== undefined) {
-      state = resetForRetry(state)
+      state = resetForRetry(state, match.event.seq)
     }
   }
   return state
@@ -271,6 +273,7 @@ function projectAssistant(context: ConversationNodeContext<AssistantState>): Ass
     visible,
     settled,
     data: {
+      ...state.attemptSeq === undefined ? {} : { attemptSeq: state.attemptSeq },
       status,
       turn: state.turn,
       step: state.step,
@@ -306,7 +309,7 @@ export const assistantDefinition: ConversationNodeDefinition<AssistantState> = {
   },
   start: (_context, match) => {
     if (match.event.type !== 'step/start') throw new Error('assistant-step start requires step/start')
-    return initialState(match.event.data.turn, match.event.data.step)
+    return initialState(match.event.data.turn, match.event.data.step, match.event.seq)
   },
   update: (context, match) => {
     if (match.event.type === 'assistant/live-chunk') {
@@ -314,7 +317,7 @@ export const assistantDefinition: ConversationNodeDefinition<AssistantState> = {
     }
     if (match.event.type === 'assistant/message') return settleMessage(context.state, match, match.event)
     if (match.event.type === 'llm/retry') {
-      return resetForRetry(context.state)
+      return resetForRetry(context.state, match.event.seq)
     }
     return context.state
   },

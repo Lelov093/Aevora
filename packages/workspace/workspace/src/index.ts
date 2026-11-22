@@ -472,10 +472,38 @@ export class WorkspaceRegistry extends Service {
    * masquerade as an unknown session.
    */
   private async sessionKnown(id: SessionId): Promise<boolean> {
+    if (this.ctx.get('sessionDeletionJournal')?.blocks(id)) return false
     if (this.ctx.get('sessions')?.get(id) !== undefined) return true
     if (this.headers.has(id)) return true
     await this.indexHeaders(await this.listStoredHeaders())
     return this.headers.has(id)
+  }
+
+  /**
+   * Remove membership, archive, and pin references of durably accepted Session deletions.
+   * @param ids - targets accepted by the managed Session journal.
+   */
+  removeDeletedSessions(ids: readonly SessionId[]): Promise<void> {
+    return this.enqueueOperation(async () => {
+      const journal = this.ctx.get('sessionDeletionJournal')
+      if (ids.some(id => !journal?.blocks(id))) throw new Error('Workspace cleanup requires accepted Session deletion')
+      const removed = new Set(ids)
+      for (const workspace of this.entities.values()) {
+        for (const id of removed) await workspace.detachSession(id)
+      }
+      const state = this.requireState()
+      await this.setState({
+        ...state,
+        pinnedSessionIds: state.pinnedSessionIds.filter(id => !removed.has(id)),
+        archivedSessionIds: state.archivedSessionIds.filter(id => !removed.has(id)),
+      })
+      for (const id of removed) {
+        this.headers.delete(id)
+        this.sessionPaths.delete(id)
+        this.missingSessionPaths.delete(id)
+        this.invalidSessionPaths.delete(id)
+      }
+    })
   }
 
   /** Request every provider's stop; a failing provider is logged, never a reason to keep the session visible. */
@@ -907,3 +935,4 @@ const sameSessionIds = (left: readonly SessionId[], right: readonly SessionId[])
   left.length === right.length && left.every((id, index) => id === right[index])
 
 export default WorkspaceRegistry
+import type {} from '@deepseek-ai/dsh-session-persistence/deletion-journal'

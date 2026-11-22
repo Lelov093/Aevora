@@ -77,6 +77,5 @@
     "@deepseek-ai/dsh-user-approval": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-settings": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

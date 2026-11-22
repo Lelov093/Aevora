@@ -59,6 +59,5 @@
     "@deepseek-ai/dsh-deepseek-account": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/dsh-agent": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

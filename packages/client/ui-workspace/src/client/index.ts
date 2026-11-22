@@ -48,6 +48,7 @@ import { UiWorkspaceService } from './navigation.ts'
 import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog } from './session-actions/ArchiveSession.tsx'
+import { registerSessionDeletion } from './session-actions/DeleteSession.tsx'
 import { derive } from './session-actions/derived.ts'
 import { ForkSessionMenuItem } from './session-actions/ForkSession.tsx'
 import { PinSessionMenuItem, PinSessionRowButton } from './session-actions/PinSession.tsx'
@@ -110,6 +111,7 @@ export const inject = [
  * @param ctx - client root context.
  */
 export function apply(ctx: Context): void {
+  registerSessionDeletion(ctx)
   const sessions = ctx.get('sessions') as ISessions
   const workspaces = ctx.get('workspaces') as IWorkspaces
   // One viewing-store instance, created here as ui-layout does for its layout

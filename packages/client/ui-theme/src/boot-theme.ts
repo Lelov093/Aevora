@@ -7,6 +7,7 @@
  */
 
 import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver'
+import { AEVORA_TOKENS } from './aevora.ts'
 import { AZURE_BLOOM_TOKENS } from './azure-bloom.ts'
 import {
   DEFAULT_FONT_SIZES, DEFAULT_PREFERENCE, FONT_ROLES, FONT_SIZE_SPECS, fontFamilyVariable, normalizeFontFamily,
@@ -18,9 +19,13 @@ const DARK_BACKGROUND = '#151517'
 
 /** CSS that colors the document canvas before any script executes. */
 function bootThemeStyle(preference: ThemePreference): string {
-  if (preference === 'azure-bloom') {
-    const tokens = Object.entries(AZURE_BLOOM_TOKENS).map(([name, value]) => `${name}:${value}`).join(';')
-    return `:root{color-scheme:light}body{background-color:#f6fbff;--dsh-boot-bg:#f6fbff}body[data-ds-theme="azure-bloom"]{${tokens}}`
+  const tokens = preference === 'azure-bloom'
+    ? AZURE_BLOOM_TOKENS
+    : preference === 'aevora' ? AEVORA_TOKENS : undefined
+  if (tokens !== undefined) {
+    const background = preference === 'aevora' ? '#f4fbff' : '#f6fbff'
+    const serialized = Object.entries(tokens).map(([name, value]) => `${name}:${value}`).join(';')
+    return `:root{color-scheme:light}body{background-color:${background};--dsh-boot-bg:${background}}body[data-ds-theme="${preference}"]{${serialized}}`
   }
   const light = `:root{color-scheme:light}body{background-color:${LIGHT_BACKGROUND};--dsh-boot-bg:${LIGHT_BACKGROUND}}`
   const dark = `:root{color-scheme:dark}body{background-color:${DARK_BACKGROUND};--dsh-boot-bg:${DARK_BACKGROUND}}`
@@ -43,7 +48,7 @@ function bootThemeBodyScript(preference: ThemePreference, fontSizes: FontSizes, 
     && typeof matchMedia !== 'undefined'
     && matchMedia('(prefers-color-scheme: dark)').matches
   const dark = preference === 'dark' || systemDark
-  document.documentElement.dataset.dsThemeSource = preference === 'azure-bloom' ? 'light' : preference
+  document.documentElement.dataset.dsThemeSource = preference === 'azure-bloom' || preference === 'aevora' ? 'light' : preference
   document.body.dataset.dsTheme = preference
   document.body.toggleAttribute('data-ds-dark-theme', dark)${sizes}${families}
 })()`

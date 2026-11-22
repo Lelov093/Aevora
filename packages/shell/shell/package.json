@@ -35,6 +35,5 @@
     "@deepseek-ai/dsh-subprocess": "workspace:*",
     "@deepseek-ai/dsh-sandbox": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~"
-  },
-  "scripts": {}
+  }
 }

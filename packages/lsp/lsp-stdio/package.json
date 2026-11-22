@@ -53,6 +53,5 @@
     "@deepseek-ai/dsh-timeout": "workspace:*",
     "typescript": "^6.0.3",
     "typescript-language-server": "^5.0.0"
-  },
-  "scripts": {}
+  }
 }

@@ -33,6 +33,5 @@
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"
-  },
-  "scripts": {}
+  }
 }

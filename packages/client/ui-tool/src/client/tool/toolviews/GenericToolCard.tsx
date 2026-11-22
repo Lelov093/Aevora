@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import {
-  IconApiOutlineRegular, IconBrowseOutlineRegular, IconCodeOutlineRegular, IconEditOutlineRegular, IconSearchOutlineRegular,
+  AevoraStatusMark, IconApiOutlineRegular, IconBrowseOutlineRegular, IconCodeOutlineRegular, IconEditOutlineRegular,
   IconSparkleRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ToolCallOwnerProps, ToolTreeProps } from '../../contract/slots.ts'
@@ -15,7 +15,7 @@ import { ToolRow } from '../components/ToolRow.tsx'
 
 /** Variant leading icons (figma table); all glyphs render at 14 inside the 16px leading box. */
 const VARIANT_ICONS: Record<ToolRowVariant, ReactNode> = {
-  search: <IconSearchOutlineRegular size={14} />,
+  search: <AevoraStatusMark kind="search" size={14} />,
   read: <IconBrowseOutlineRegular size={14} />,
   bash: <IconApiOutlineRegular size={14} />,
   write: <IconEditOutlineRegular size={14} />,

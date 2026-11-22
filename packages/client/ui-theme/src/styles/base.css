@@ -38,7 +38,7 @@ body {
   outline: none;
 }
 
-/* Azure Bloom keeps the v05 control feedback separate from the built-in palettes. */
+/* Azure Bloom keeps its product control feedback separate from the built-in palettes. */
 body[data-ds-theme='azure-bloom'] {
   --dsw-modal-border: 1px solid #d7eaf6;
   --dsw-modal-radius: 20px;
@@ -48,29 +48,47 @@ body[data-ds-theme='azure-bloom'] {
   background: #f6fbff;
 }
 
-body[data-ds-theme='azure-bloom'] button {
+/* Aevora owns a separate application-wide material layer and canvas. */
+body[data-ds-theme='aevora'] {
+  --dsw-modal-border: 1px solid var(--aevora-border-soft, #d5f0f2);
+  --dsw-modal-radius: 22px;
+  --dsw-modal-fill: linear-gradient(145deg, #fffffff5, #eefbfff5);
+  --dsw-modal-shadow: 0 20px 70px #4facfe26, inset 0 1px #ffffff;
+  --dsw-modal-blur: blur(22px);
+  background: #f4fbff;
+  background-image: var(--aevora-surface-canvas);
+}
+
+body[data-ds-theme='azure-bloom'] button,
+body[data-ds-theme='aevora'] button {
   transition-property: background-color, border-color, color, box-shadow;
   transition-duration: 180ms;
   transition-timing-function: cubic-bezier(.2, 0, 0, 1);
 }
 
-body[data-ds-theme='azure-bloom'] button:focus-visible {
+body[data-ds-theme='azure-bloom'] button:focus-visible,
+body[data-ds-theme='aevora'] button:focus-visible {
   outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: 2px;
 }
 
-body[data-ds-theme='azure-bloom'] button:active:not(:disabled) {
+body[data-ds-theme='azure-bloom'] button:active:not(:disabled),
+body[data-ds-theme='aevora'] button:active:not(:disabled) {
   translate: 0 1px;
 }
 
 @media (prefers-reduced-motion: reduce) {
   body[data-ds-theme='azure-bloom'] *,
   body[data-ds-theme='azure-bloom'] *::before,
-  body[data-ds-theme='azure-bloom'] *::after {
+  body[data-ds-theme='azure-bloom'] *::after,
+  body[data-ds-theme='aevora'] *,
+  body[data-ds-theme='aevora'] *::before,
+  body[data-ds-theme='aevora'] *::after {
     animation: none !important;
     transition: none !important;
   }
-  body[data-ds-theme='azure-bloom'] button:active:not(:disabled) {
+  body[data-ds-theme='azure-bloom'] button:active:not(:disabled),
+  body[data-ds-theme='aevora'] button:active:not(:disabled) {
     translate: none;
   }
 }

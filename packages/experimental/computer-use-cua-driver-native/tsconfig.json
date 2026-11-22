@@ -4,13 +4,27 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../../vendor/schemastery" },
-    { "path": "../../computer-use/computer-use" },
-    { "path": "../../core/tools" },
-    { "path": "../../core/system-prompt" },
-    { "path": "../../mcp/mcp-client" }
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../computer-use/computer-use"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../core/system-prompt"
+    },
+    {
+      "path": "../../mcp/mcp-client"
+    }
   ]
 }

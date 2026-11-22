@@ -91,6 +91,9 @@
     },
     {
       "path": "../../credentials/deepseek-account"
+    },
+    {
+      "path": "../text-to-speech"
     }
   ]
 }

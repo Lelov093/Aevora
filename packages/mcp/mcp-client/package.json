@@ -70,6 +70,5 @@
     "@deepseek-ai/dsh-system-prompt": {
       "optional": true
     }
-  },
-  "scripts": {}
+  }
 }

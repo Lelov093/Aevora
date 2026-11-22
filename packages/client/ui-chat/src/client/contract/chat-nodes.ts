@@ -36,6 +36,8 @@ export type ChatNode<Kind extends ChatNodeKind = ChatNodeKind> = {
 
 /** Final Assistant row payload shared by streaming and settled states. */
 export interface AssistantChatData {
+  /** Event sequence identifying this request attempt; absent only on synthetic or cropped input without its start. */
+  readonly attemptSeq?: number
   readonly status: 'running' | 'settled' | 'interrupted'
   readonly turn: number
   readonly step: number

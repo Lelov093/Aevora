@@ -44,6 +44,5 @@
     "@deepseek-ai/dsh-session-projection": "workspace:*",
     "@deepseek-ai/dsh-subprocess-local": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~"
-  },
-  "scripts": {}
+  }
 }

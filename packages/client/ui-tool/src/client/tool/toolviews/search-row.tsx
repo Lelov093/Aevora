@@ -1,5 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
-import { IconSearchOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { AevoraStatusMark } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '../../contract/slots.ts'
 import { searchCardModel } from '../models/search-card-model.ts'
@@ -24,7 +24,7 @@ export function SearchRow({ toolName, block, inspect, useDisclosure, t }: Search
       t={t}
       variant={model.variant}
       toolName={toolName}
-      icon={<IconSearchOutlineRegular size={14} />}
+      icon={<AevoraStatusMark kind="search" size={14} />}
       title={t(toolName === 'grep'
         ? SEARCH_TITLE_KEYS.grep
         : toolName === 'glob' ? SEARCH_TITLE_KEYS.glob : model.titleKey)}

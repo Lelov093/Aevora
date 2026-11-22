@@ -1,0 +1,111 @@
+.mark {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  color: var(--aevora-color-cyan, var(--dsw-alias-state-business-primary));
+}
+
+.orbit,
+.core,
+.spark {
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
+}
+
+.orbit {
+  inset: 9%;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  corner-shape: round;
+  opacity: 0.82;
+  transform: rotate(-28deg);
+}
+
+.core {
+  inset: 31%;
+  border-radius: 50%;
+  corner-shape: round;
+  background: currentColor;
+  box-shadow: 0 0 8px color-mix(in srgb, currentColor 55%, transparent);
+}
+
+.spark {
+  top: 2%;
+  right: 9%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--aevora-color-pearl, currentColor);
+}
+
+.mark[data-kind='thinking'] {
+  color: var(--aevora-color-cyan, var(--dsw-alias-state-business-primary));
+}
+
+.mark[data-kind='running'],
+.mark[data-kind='tool'],
+.mark[data-kind='search'] {
+  color: var(--aevora-color-blue, var(--dsw-alias-brand-primary));
+}
+
+.mark[data-kind='search'] {
+  color: var(--aevora-color-cyan, var(--dsw-alias-state-business-primary));
+}
+
+.mark[data-kind='waiting'] {
+  color: var(--aevora-color-warm, var(--dsw-alias-state-warn-primary));
+}
+
+.mark[data-kind='success'] {
+  color: var(--aevora-color-mint, var(--dsw-alias-state-success-primary));
+}
+
+.mark[data-kind='error'] {
+  color: var(--aevora-color-pink, var(--dsw-alias-state-error-primary));
+}
+
+.mark[data-kind='stopped'] {
+  color: var(--aevora-color-warm, var(--dsw-alias-state-warn-primary));
+}
+
+.mark[data-kind='unknown'] {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mark[data-kind='thinking'] .orbit,
+  .mark[data-kind='running'] .orbit,
+  .mark[data-kind='tool'] .orbit {
+    animation: aevora-status-orbit 2.4s linear infinite;
+  }
+
+  .mark[data-kind='thinking'] .core,
+  .mark[data-kind='running'] .core {
+    animation: aevora-status-breathe 1.8s ease-in-out infinite;
+  }
+}
+
+@keyframes aevora-status-orbit {
+  to { transform: rotate(332deg); }
+}
+
+@keyframes aevora-status-breathe {
+  0%, 100% { transform: scale(0.84); opacity: 0.72; }
+  50% { transform: scale(1); opacity: 1; }
+}
+
+@media (forced-colors: active) {
+  .orbit { border-color: currentColor; border-right-color: transparent; }
+  .core,
+  .spark { background: currentColor; box-shadow: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit,
+  .core {
+    animation: none;
+  }
+}

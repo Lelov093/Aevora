@@ -59,6 +59,5 @@
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-working-directory": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

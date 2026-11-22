@@ -56,6 +56,5 @@
     "@deepseek-ai/dsh-tool-executor-native": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-working-directory": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

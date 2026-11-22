@@ -38,6 +38,5 @@
     "@deepseek-ai/dsh-subagent": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-user-questions": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

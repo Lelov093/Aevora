@@ -7,6 +7,8 @@ export { UserMessageBubble } from './UserMessageBubble.tsx'
 export type { UserMessageBubbleProps } from './UserMessageBubble.tsx'
 export { StateDot } from './StateDot.tsx'
 export type { StateDotState } from './StateDot.tsx'
+export { AevoraStatusMark } from './AevoraStatusMark.tsx'
+export type { AevoraStatusMarkKind } from './AevoraStatusMark.tsx'
 export { DisclosureRow } from './DisclosureRow.tsx'
 export type { DisclosureRowProps } from './DisclosureRow.tsx'
 export { AnimatedRows } from './AnimatedRows.tsx'
@@ -125,6 +127,8 @@ export type { DetailDocumentCopy, DetailDocumentLabels, DetailDocumentRead, Deta
 export { MarkdownText } from './markdown/MarkdownText.tsx'
 export type { MarkdownCodeLabels, MarkdownFileMentions, MarkdownLabels, MarkdownPathImages } from './markdown/MarkdownText.tsx'
 export { extractMarkdownPlainText } from './markdown/plain-text.ts'
+export { StreamingSpeechText } from './markdown/speech-text.ts'
+export type { SpeechTextUpdate } from './markdown/speech-text.ts'
 export type { MarkdownPlainTextMode, MarkdownPlainTextOptions } from './markdown/plain-text.ts'
 export * from './icons/index.tsx'
 export {
@@ -140,3 +144,11 @@ export { formatQuoteText } from './markdown/quote-text.ts'
 
 export { TurnNavigator } from './TurnNavigator.tsx'
 export type { TurnNavigatorHandle, TurnNavigatorItem, TurnNavigatorLabels } from './TurnNavigator.tsx'
+export { SettingsProviderDirectory } from './settings-form/provider-directory.ts'
+export type {
+  SettingsProviderProfile, SettingsProviderProfiles, SettingsProviderFamily, SettingsProviderField,
+  SettingsProviderDirectoryOptions, SettingsProviderDirectoryState,
+} from './settings-form/provider-directory.ts'
+export { SettingsProviderCard, SettingsProviders } from './settings-form/SettingsProviders.tsx'
+export { providerSettingsEn, providerSettingsZh, settingsProviderLabels } from './settings-form/locales.ts'
+export type { SettingsProviderCopyKey, SettingsProviderLabels } from './settings-form/locales.ts'

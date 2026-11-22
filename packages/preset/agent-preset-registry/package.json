@@ -95,6 +95,5 @@
     "@deepseek-ai/dsh-agent-preset": "workspace:*",
     "@deepseek-ai/dsh-working-directory": "workspace:*",
     "@types/js-yaml": "^4.0.9"
-  },
-  "scripts": {}
+  }
 }

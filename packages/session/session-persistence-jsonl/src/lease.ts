@@ -30,7 +30,7 @@
 
 import { mkdir, open, stat } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { tryLockExclusive } from '@deepseek-ai/node-addon-system/flock'
 import { SessionAlreadyOwnedError } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionId } from '@deepseek-ai/dsh-session'
@@ -58,16 +58,17 @@ function isLockContention(error: unknown): boolean {
 export class SessionWriteLease {
   private released = false
 
-  private constructor(private readonly held: HeldLock) {}
+  private constructor(private readonly held: HeldLock, private readonly path: string) {}
 
   /**
    * Acquire the session directory's kernel write lock.
    * @param dir - the session's artifact directory (created if absent).
    * @param id - the session the lock guards, for error identities.
+   * @param scope - managed root locks span Windows login sessions.
    * @returns the held lock.
    * @throws {SessionAlreadyOwnedError} while another holder keeps the lock.
    */
-  static async acquire(dir: string, id: SessionId): Promise<SessionWriteLease> {
+  static async acquire(dir: string, id: SessionId, scope: 'session' | 'root' = 'session'): Promise<SessionWriteLease> {
     const path = join(dir, LEASE_FILENAME)
     // Owner-only like materializePosix's directories: the lock may create the
     // session directory first, and both creators must agree on the mode.
@@ -76,13 +77,13 @@ export class SessionWriteLease {
     if (process.platform === 'win32') {
       let handle: number
       try {
-        handle = await acquireLockHandleWin32(path)
+        handle = await acquireLockHandleWin32(path, scope === 'root' ? 'Global' : 'Local')
       } catch (error: unknown) {
         // Sharing violation: another handle already holds the write exclusion.
         if ((error as NodeJS.ErrnoException | null)?.code === 'EBUSY') throw new SessionAlreadyOwnedError(id)
         throw error
       }
-      return new SessionWriteLease({ kind: 'win32', handle })
+      return new SessionWriteLease({ kind: 'win32', handle }, path)
     }
     /* v8 ignore stop */
     // Bounded retry: locking an inode a releasing creator just unlinked (or a
@@ -102,7 +103,7 @@ export class SessionWriteLease {
           throw error
         })
         if (current !== undefined && current.ino === held.ino && current.dev === held.dev) {
-          return new SessionWriteLease({ kind: 'posix', handle })
+          return new SessionWriteLease({ kind: 'posix', handle }, path)
         }
       } catch (error: unknown) {
         await handle.close()
@@ -113,6 +114,15 @@ export class SessionWriteLease {
       await handle.close()
     }
     throw new SessionAlreadyOwnedError(id)
+  }
+
+  /**
+   * Identifies the artifact directory protected by a live lease.
+   * @param directory - canonical artifact directory.
+   * @returns whether this object still owns that directory's write lock.
+   */
+  covers(directory: string): boolean {
+    return !this.released && relative(this.path, join(directory, LEASE_FILENAME)) === ''
   }
 
   /**

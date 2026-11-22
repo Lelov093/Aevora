@@ -2,8 +2,9 @@
 import { useMemo } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import {
+  AevoraStatusMark,
   IconAgentPresetOutlineRegular, IconBranchOutlineRegular, IconChecklistOutlineRegular, IconClockOutlineRegular,
-  IconCodeOutlineRegular, IconCordisPluginOutlineRegular, IconGoalOutlineRegular, IconSearchOutlineRegular,
+  IconCodeOutlineRegular, IconCordisPluginOutlineRegular, IconGoalOutlineRegular,
   IconUsersOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
@@ -32,7 +33,7 @@ function detailIcon(toolName: string) {
   if (toolName.endsWith('_goal')) return <IconGoalOutlineRegular size={14} />
   if (toolName.startsWith('cordis_')) return <IconCordisPluginOutlineRegular />
   if (toolName.startsWith('terminal_')) return <IconCodeOutlineRegular size={14} />
-  if (toolName.startsWith('session_') || toolName === 'lsp') return <IconSearchOutlineRegular size={14} />
+  if (toolName.startsWith('session_') || toolName === 'lsp') return <AevoraStatusMark kind="search" size={14} />
   if (toolName.startsWith('job_') || toolName.startsWith('team_task_')) return <IconChecklistOutlineRegular />
   if (toolName === 'workflow' || toolName === 'ralph') return <IconBranchOutlineRegular size={14} />
   return <IconAgentPresetOutlineRegular size={14} />

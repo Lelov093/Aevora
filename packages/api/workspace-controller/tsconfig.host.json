@@ -12,18 +12,75 @@
     "src/default-workspace.ts",
     "src/directory-picker.ts",
     "src/feed.ts",
-    "src/default-directory.ts"
+    "src/default-directory.ts",
+    "src/session-deletion/coordinator.ts",
+    "src/session-deletion/owners.ts",
+    "src/session-deletion/remote.ts",
+    "src/session-deletion/types.ts"
   ],
   "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../../vendor/schemastery" },
-    { "path": "../../core/session" },
-    { "path": "../../host/directory-picker" },
-    { "path": "../../storage/storage-domain" },
-    { "path": "../../typert/protocol" },
-    { "path": "../remote-access/tsconfig.host.json" },
-    { "path": "../../util/deque" },
-    { "path": "../../util/native-command" },
-    { "path": "../../workspace/workspace" }
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../client/connection/tsconfig.host.json"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../deliverables/workspace-changes"
+    },
+    {
+      "path": "../../host/directory-picker"
+    },
+    {
+      "path": "../../schedule/schedule"
+    },
+    {
+      "path": "../../session/session-persistence"
+    },
+    {
+      "path": "../../session/session-persistence-jsonl"
+    },
+    {
+      "path": "../../session/session-projection-cache"
+    },
+    {
+      "path": "../../session-query/session-query"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../spill/spill-local"
+    },
+    {
+      "path": "../../subagent/subagent"
+    },
+    {
+      "path": "../../typert/protocol"
+    },
+    {
+      "path": "../remote-access/tsconfig.host.json"
+    },
+    {
+      "path": "../session-controller/tsconfig.host.json"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../util/deque"
+    },
+    {
+      "path": "../../util/native-command"
+    },
+    {
+      "path": "../../workspace/workspace"
+    }
   ]
 }

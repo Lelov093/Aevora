@@ -39,6 +39,5 @@
     "@deepseek-ai/dsh-util-workspace-path": "workspace:*",
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-tool-executor-native": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

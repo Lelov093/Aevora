@@ -8,7 +8,7 @@ import type {
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { LlmAttemptId, MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { TextBlock } from '@deepseek-ai/dsh-llm'
-import type { SessionId, SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
+import type { SessionId, SessionSeq, SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
 import type { SessionProjectionMap, SessionProjectionSummaryExcluded, SessionProjectionSummaryValues } from '@deepseek-ai/dsh-session-projection/types'
 import type { Principal } from '@deepseek-ai/dsh-typert-protocol'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -320,6 +320,8 @@ export interface SessionPromptRequest {
   /** At least one non-whitespace text part or attachment. */
   readonly content: readonly PromptContentPart[]
   readonly clientTimeZone?: string
+  /** Cancel only work still owned by this human event before admitting the new queue input. */
+  readonly interruptAt?: SessionSeq
 }
 
 /** Receipt after one prompt enters the target Agent inbox. */

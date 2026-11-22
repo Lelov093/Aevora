@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Voice turn detection",
+    "description": "Detect voice activity and completed utterances with explicitly prepared local models."
+  }
+}

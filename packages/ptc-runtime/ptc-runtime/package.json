@@ -33,6 +33,5 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-sandbox": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

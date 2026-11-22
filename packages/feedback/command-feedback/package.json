@@ -65,6 +65,5 @@
     "@deepseek-ai/dsh-anonymous-user-id": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

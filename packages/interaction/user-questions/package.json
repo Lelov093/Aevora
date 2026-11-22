@@ -68,6 +68,5 @@
   "dependencies": {
     "zod": "4.4.3",
     "@deepseek-ai/schemastery": "workspace:~"
-  },
-  "scripts": {}
+  }
 }

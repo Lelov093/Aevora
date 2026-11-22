@@ -67,6 +67,5 @@
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts"
   ],
-  "icon": "./icon.svg",
-  "scripts": {}
+  "icon": "./icon.svg"
 }

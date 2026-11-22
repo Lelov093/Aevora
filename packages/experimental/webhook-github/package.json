@@ -56,6 +56,5 @@
     "@deepseek-ai/dsh-host-webserver": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-webhook": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

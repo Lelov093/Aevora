@@ -1,0 +1,44 @@
+.page {
+  display: grid;
+  gap: 20px;
+  width: 100%;
+  max-width: 720px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.heading h2,
+.heading p,
+.card p { margin: 0; }
+.heading h2 { font-size: 18px; font-weight: 500; line-height: 28px; }
+.heading p,
+.card p,
+.status,
+.notice { color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 20px; }
+.cards { display: grid; gap: 10px; }
+.card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
+}
+.cardCopy { display: grid; gap: 4px; min-width: 0; }
+.cardTitle { display: flex; align-items: center; gap: 8px; }
+.cardTitle h3 { margin: 0; font-size: 14px; font-weight: 500; line-height: 20px; }
+.status { font-size: 12px; }
+.notice { margin: 0; }
+
+@media (max-width: 560px) {
+  .heading,
+  .card { align-items: stretch; flex-direction: column; }
+}

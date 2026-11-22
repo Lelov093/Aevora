@@ -15,7 +15,6 @@ import {
   powerMonitor,
   nativeImage,
   nativeTheme,
-  net,
   protocol,
   session,
   shell,
@@ -41,7 +40,7 @@ import { DesktopCommandManager } from './command-management.ts'
 import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
 import { DesktopFatalRecovery } from './fatal-recovery.ts'
 import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
-import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
+import { createDesktopWelcomeBackend, type DesktopWelcomeBackend } from './welcome-backend.ts'
 import { DesktopUpdateJournal } from './update-journal.ts'
 import { DesktopUpdatePreparationError } from './update-error.ts'
 import { DesktopUpdateSchedule, resolveDesktopUpdateScheduleConfig } from './update-schedule.ts'
@@ -472,7 +471,7 @@ async function main(): Promise<void> {
         hostUrl = ready.url
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
         injections = ready.injections
-        welcomeBackend = await connectDesktopWelcome(ready.url, (input, init) => net.fetch(input, init), async () => (await session.defaultSession.cookies.get({ url: ready.url })).map(cookie => `${cookie.name}=${cookie.value}`).join('; '))
+        welcomeBackend = createDesktopWelcomeBackend(ready.url, hostCookie)
         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
         stopAccount?.()

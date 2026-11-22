@@ -56,6 +56,5 @@
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-util-time": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

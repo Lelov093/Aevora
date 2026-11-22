@@ -8,6 +8,7 @@
 export const PLATFORM_MODULES = [
   'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
   'zod', '@tanstack/react-virtual',
+  '@deepseek-ai/dsh-typert-protocol/remote-info',
   '@deepseek-ai/dsh-client-store',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-ui-primitives',

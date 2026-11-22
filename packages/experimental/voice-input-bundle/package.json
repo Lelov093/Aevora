@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-experimental-voice-input-bundle",
-  "description": "Experimental voice input with local SenseVoice; downloads its runtime on first use",
+  "description": "Optional voice input with local recognition and user-configured online transcription",
   "version": "0.2.1-rc.3",
   "icon": "./icon.svg",
   "publishConfig": {
@@ -37,7 +37,9 @@
     "@deepseek-ai/dsh-experimental-speech-to-text": "workspace:*",
     "@deepseek-ai/dsh-experimental-speech-to-text-sensevoice": "workspace:*",
     "@deepseek-ai/dsh-experimental-api-speech-to-text": "workspace:*",
-    "@deepseek-ai/dsh-experimental-client-ui-voice-input": "workspace:*"
+    "@deepseek-ai/dsh-experimental-client-ui-voice-input": "workspace:*",
+    "@deepseek-ai/dsh-experimental-speech-to-text-qwen": "workspace:*",
+    "@deepseek-ai/dsh-experimental-voice-turns": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"
@@ -51,6 +53,5 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
-  },
-  "scripts": {}
+  }
 }

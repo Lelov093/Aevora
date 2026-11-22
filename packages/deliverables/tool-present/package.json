@@ -58,6 +58,5 @@
     "@deepseek-ai/dsh-fs-local": "workspace:*",
     "@deepseek-ai/dsh-scope": "workspace:*",
     "@deepseek-ai/dsh-working-directory": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

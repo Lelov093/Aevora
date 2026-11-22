@@ -79,9 +79,10 @@ export interface ISession {
   /**
    * Send a prompt into the session.
    * @param content - text plus browser-owned temporary image uploads.
-   * @param mode - 'queue' appends a turn; 'steer' interrupts the running one.
+   * @param mode - 'queue' appends a turn; 'steer' delivers at the nearest next step.
    * @param signal - optional caller cancellation for the complete admission round-trip.
    * @param requestId - identity from {@link beginSubmission}; a failed identified prompt retires its echo.
+   * @param interruptAt - optional last human event owning work to cancel before ordinary queue admission; unavailable for subagents.
    * @returns acceptance, or the business error (also mirrored into snapshot.promptError).
    */
   prompt(
@@ -89,6 +90,7 @@ export interface ISession {
     mode: 'queue' | 'steer',
     signal?: AbortSignal,
     requestId?: SessionRequestId,
+    interruptAt?: SessionSeq,
   ): Promise<RemoteResult<{ accepted: true }>>
   /**
    * Resolve one durable image referenced by this session.

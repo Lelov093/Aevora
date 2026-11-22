@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "语音输入",
-    "description": "在本机使用 SenseVoice 转写录音，首次使用需安装依赖。",
+    "description": "使用本地识别，或在语音设置添加自己的在线识别提供商；本地模型按需单独准备。",
     "detail": "assets/DETAIL.zh.md"
   }
 }

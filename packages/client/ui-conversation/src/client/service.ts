@@ -26,6 +26,16 @@ import type {
 } from './contract/slots.ts'
 import type { QueueAction } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** Local user cancellation, emitted before the Host round trip.
+     * @mode parallel
+     * @param sessionId - conversation whose current output should stop.
+     */
+    'conversation/cancel-requested'(sessionId: SessionId): void
+  }
+}
 import type { ComposerBlocks } from './contract/composer-blocks.ts'
 import type {
   DraftAttachmentId, DraftAttachmentSerializationResult, SessionInputResolver, SubmitAttachment, SubmitOutcome,
@@ -533,6 +543,7 @@ export class ConversationController extends Service implements IConversation {
   /** Cancel the scoped session's in-flight turn while preserving Queue (failures land in promptError and reject, as in send). */
   async cancel(): Promise<void> {
     const session = this.scopedSession('cancel')
+    this.ctx.emit('conversation/cancel-requested', session.sessionId)
     const result = await session.cancel()
     if (!result.ok) throw new Error(`conversation.cancel failed: ${result.error.code}: ${result.error.message}`)
   }

@@ -68,6 +68,5 @@
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~"
-  },
-  "scripts": {}
+  }
 }

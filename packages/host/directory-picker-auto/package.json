@@ -52,6 +52,5 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-launch-environment": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

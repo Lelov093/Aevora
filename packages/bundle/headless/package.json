@@ -87,6 +87,5 @@
     "@deepseek-ai/dsh-subagent": {
       "optional": true
     }
-  },
-  "scripts": {}
+  }
 }

@@ -192,7 +192,14 @@
     "@deepseek-ai/dsh-client-ui-settings-session-log": "workspace:*",
     "@deepseek-ai/dsh-harness-dev-context": "workspace:*",
     "@deepseek-ai/dsh-deliverable-file-references": "workspace:*",
-    "@deepseek-ai/dsh-client-ui-file-drag": "workspace:*"
+    "@deepseek-ai/dsh-client-ui-file-drag": "workspace:*",
+    "@deepseek-ai/dsh-text-to-speech": "workspace:*",
+    "@deepseek-ai/dsh-text-to-speech-qwen": "workspace:*",
+    "@deepseek-ai/dsh-api-text-to-speech": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-voice": "workspace:*",
+    "@deepseek-ai/dsh-web-search-exa": "workspace:*",
+    "@deepseek-ai/dsh-web-search-perplexity": "workspace:*",
+    "@deepseek-ai/dsh-web-search-tavily": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -212,6 +219,5 @@
     "@deepseek-ai/dsh-typert-registry": "workspace:*",
     "@deepseek-ai/libreoffice-kit": "^0.1.5",
     "@deepseek-ai/dsh-otel": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

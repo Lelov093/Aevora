@@ -25,6 +25,12 @@
     },
     {
       "path": "../../util/http-proxy"
+    },
+    {
+      "path": "../../credentials/credentials"
+    },
+    {
+      "path": "../../../vendor/loader"
     }
   ]
 }

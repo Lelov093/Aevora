@@ -1,6 +1,6 @@
 /**
  * Appearance preference row registered into the General section item slot
- * with independent light, dark, system, and Azure Bloom choices.
+ * with independent light, dark, system, Azure Bloom, and Aevora choices.
  * Registered by this package — the theme feature owns its own settings
  * surface. Selection follows the persisted preference, never the resolved
  * active theme.
@@ -27,12 +27,13 @@ export type AppearanceRowComponentProps =
   PropsRuntime<'settings.general.item'> & PropsStore<ReturnType<typeof createAppearanceRowStore>>
   & PropsLocale<'settings.theme'> & AppearanceRowInjected
 
-/** Preserve the native choice order and append the fixed Azure Bloom appearance. */
+/** Preserve the native choice order and append the two product-owned appearances. */
 const CUBES: readonly { id: ThemePreference; labelKey: ThemeKey; Icon: typeof IconLightOutlineMedium }[] = [
   { id: 'light', labelKey: 'appearance.light', Icon: IconLightOutlineMedium },
   { id: 'dark', labelKey: 'appearance.dark', Icon: IconDarkOutlineMedium },
   { id: 'system', labelKey: 'appearance.system', Icon: IconFollowsystemOutlineMedium },
   { id: 'azure-bloom', labelKey: 'appearance.azureBloom', Icon: IconLightOutlineMedium },
+  { id: 'aevora', labelKey: 'appearance.aevora', Icon: IconLightOutlineMedium },
 ]
 
 /**
@@ -51,6 +52,7 @@ export function AppearanceRow({ t, setTheme, useStore }: AppearanceRowComponentP
             key={id}
             type="button"
             className={clsx(css.themeCube, preference === id && css.selected)}
+            data-theme={id}
             aria-pressed={preference === id}
             onClick={() => { setTheme(id) }}
           >

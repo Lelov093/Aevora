@@ -15,6 +15,8 @@ import type {} from '@deepseek-ai/dsh-agent'
 import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/dsh-session-persistence/deletion-journal'
+import { SessionArtifactRoot, type SessionDeletionArtifactOwner } from '@deepseek-ai/dsh-session-persistence/deletion-artifact-root'
 import type { FsTarget } from '@deepseek-ai/dsh-fs'
 import { GitRunner } from './git.ts'
 import { TurnRecorder } from './recorder.ts'
@@ -29,6 +31,13 @@ export const name = 'workspace-changes'
 
 /** Services used to run git, resolve mutation targets, and observe turns. */
 export const inject = ['subprocess', 'fs']
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Cleanup of scratch snapshots written to the managed artifact root. */
+    sessionDeletionWorkspaceChanges: SessionDeletionArtifactOwner
+  }
+}
 
 /** Snapshot, capture, and comparison bounds. Invalid values fail plugin load. */
 export interface Config {
@@ -45,6 +54,8 @@ export interface Config {
   maxFileBytes: number
   /** Milliseconds a line comparison may run before it degrades to whole-file replacement. */
   diffTimeoutMs: number
+  /** Dedicated artifact root for the managed deletion composition. */
+  managedArtifactRoot?: string
 }
 
 /** Schemastery validation for {@link Config}. */
@@ -54,6 +65,7 @@ export const Config: z<Config> = z.object({
   maxFiles: z.number().default(500),
   maxFileBytes: z.number().default(2 * 1024 * 1024),
   diffTimeoutMs: z.number().default(100),
+  managedArtifactRoot: z.string(),
 })
 
 function eligible(session: Session): string | undefined {
@@ -103,21 +115,40 @@ export function apply(ctx: Context, config: Config): void {
   const recorders = new Map<Session, TurnRecorder>()
   const mutations = new WeakMap<object, TurnRecorder>()
   const byId = new Map<SessionId, TurnRecorder>()
+  const retiring = new Map<SessionId, Promise<void>>()
+  const managed = config.managedArtifactRoot === undefined ? undefined : new SessionArtifactRoot(config.managedArtifactRoot)
   const forget = (session: Session): Promise<void> => {
     const recorder = recorders.get(session)
     recorders.delete(session)
     byId.delete(session.id)
-    return recorder?.dispose() ?? Promise.resolve()
+    if (recorder === undefined) return retiring.get(session.id) ?? Promise.resolve()
+    const done = recorder.dispose().finally(() => { retiring.delete(session.id) })
+    if (managed !== undefined) retiring.set(session.id, done)
+    return done
   }
   ctx.effect(() => async () => {
     lifetime.abort()
     await Promise.all([...recorders.keys()].map(forget))
+    await Promise.allSettled(retiring.values())
   })
   const service: WorkspaceChanges = {
     summary: (sessionId, seq) => byId.get(sessionId)?.summary(seq),
     diff: (sessionId, seq, index, signal) => byId.get(sessionId)?.diff(seq, index, signal) ?? Promise.resolve(undefined),
   }
   ctx.provide('workspaceChanges', service)
+  if (managed !== undefined) {
+    ctx.effect(() => ctx.provide('sessionDeletionWorkspaceChanges', {
+      removeDeletedSessions: async ids => {
+        const journal = ctx.get('sessionDeletionJournal')
+        if (ids.some(id => !journal?.blocks(id))) throw new Error('Workspace artifact cleanup requires accepted Session deletion')
+        const scope = new Set(ids)
+        await Promise.all([...recorders.keys()].filter(session => scope.has(session.id)).map(forget))
+        await Promise.allSettled(ids.map(id => retiring.get(id)))
+        await managed.remove(ids)
+      },
+      verifyDeletedSessions: ids => managed.verify(ids),
+    }), 'provide managed workspace artifact cleanup')
+  }
   let runner: Promise<GitRunner | null> | undefined
   const gitRunner = (): Promise<GitRunner | null> => {
     runner ??= resolveGit(ctx, lifetime.signal).then((executable) => {
@@ -134,6 +165,7 @@ export function apply(ctx: Context, config: Config): void {
     if (recorder === undefined) {
       recorder = new TurnRecorder(session, cwd, {
         git: gitRunner(), tempRoot: tmpdir(), maxFiles: config.maxFiles,
+        ...(managed === undefined ? {} : { prepareTempRoot: () => managed.prepare(session.id) }),
         maxFileBytes: config.maxFileBytes, diffTimeoutMs: config.diffTimeoutMs,
         warn: (message) => { ctx.logger.warn(message) },
       })
@@ -144,6 +176,7 @@ export function apply(ctx: Context, config: Config): void {
   }
   ctx.on('session/event', (session, event) => {
     if (event.type === 'turn/start') {
+      if (managed !== undefined && ctx.get('sessionDeletionAdmission')?.blocks(session.id) !== false) return
       const cwd = eligible(session)
       if (cwd !== undefined) recorderFor(session, cwd).start(event.data.turn)
       return
@@ -151,7 +184,9 @@ export function apply(ctx: Context, config: Config): void {
     if (event.type === 'tool/result') recorders.get(session)?.observe(event)
     else if (event.type === 'turn/end') recorders.get(session)?.end(event.data.turn)
   })
-  ctx.on('session/disposed', (session) => { void forget(session) })
+  ctx.on('session/disposed', (session) => {
+    void forget(session).catch((error: unknown) => { ctx.logger.warn('workspace-changes: scratch retirement failed: %s', String(error)) })
+  })
   ctx.on('agent/turn-stopping', async ({ agent, turn }) => {
     await recorders.get(agent.session)?.stopping(turn)
   })

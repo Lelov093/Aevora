@@ -115,6 +115,9 @@ export function apply(ctx: Context): void {
   const sessions = new ClientSessions(ctx, remotes)
   ctx.remote.$on('api-session/added', (summary) => { sessions.handleSessionAdded(summary) })
   ctx.remote.$on('api-session/removed', (sessionId) => { sessions.handleSessionRemoved(sessionId) })
+  ctx.on('client/session-deleted', (ids) => {
+    for (const id of ids) sessions.handleSessionRemoved(id)
+  })
   ctx.remote.$on('api-session/status', (sessionId, running) => {
     sessions.handleSessionStatus(sessionId, running)
   })
@@ -146,4 +149,13 @@ export function apply(ctx: Context): void {
     },
   })
   ctx.effect(() => async () => { await control.dispose() }, 'session-controller.client.control')
+}
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * @mode emit
+     * @param sessionIds - Sessions confirmed deleted by the authenticated Host.
+     */
+    'client/session-deleted'(sessionIds: readonly import('@deepseek-ai/dsh-session/types').SessionId[]): void
+  }
 }

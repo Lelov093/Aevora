@@ -74,10 +74,8 @@
     "@deepseek-ai/dsh-cmdline": "workspace:*",
     "@deepseek-ai/dsh-client-connection": "workspace:*",
     "@types/ws": "^8.18.1",
-    "playwright": "^1.49.0",
     "tsx": "^4.23.13",
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-client-modules": "workspace:*"
-  },
-  "scripts": {}
+  }
 }

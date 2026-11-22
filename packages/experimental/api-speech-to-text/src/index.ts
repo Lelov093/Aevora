@@ -1,13 +1,23 @@
 /** Authenticated, cancellation-aware Client access to the speech capability. */
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, RemoteError, TypertRemoteService, type RemoteStream } from '@deepseek-ai/dsh-typert-protocol'
+import { SpeechFailure, speechFailureOf } from '@deepseek-ai/dsh-experimental-speech-to-text'
 import type {} from '@deepseek-ai/dsh-experimental-speech-to-text'
-import type { SpeechPreparationOptions, SpeechProviderId, SpeechSelectionPatch, Transcript } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
-import type { SpeechCatalog, TranscriptionRequest } from './types.ts'
+import type { SpeechPreparationOptions, SpeechProviderId, SpeechSelection, SpeechSelectionPatch, Transcript } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
+import type { SpeechCatalog, TranscriptionRequest, SpeechStreamLimits, SpeechStreamCommand, SpeechStreamFrame } from './types.ts'
 import { validateWave } from '@deepseek-ai/dsh-experimental-speech-to-text/wave'
 
 export type * from './types.ts'
+
+async function receive<T>(pending: Promise<IteratorResult<T>>, signal: AbortSignal): Promise<IteratorResult<T>> {
+  signal.throwIfAborted()
+  const cancelled = Promise.withResolvers<never>()
+  const abort = (): void => { cancelled.reject(signal.reason) }
+  signal.addEventListener('abort', abort, { once: true })
+  try { return await Promise.race([pending, cancelled.promise]) }
+  finally { signal.removeEventListener('abort', abort) }
+}
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -17,7 +27,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /** Limits applied before decoding or calling a provider. */
-export interface Config {
+export interface Config extends SpeechStreamLimits {
   /** Maximum decoded WAV bytes per request. */
   maxAudioBytes: number
   /** Maximum PCM recording duration in seconds. */
@@ -27,9 +37,13 @@ export interface Config {
 /** Speech calls never activate or submit to an Agent. */
 export default class SpeechController extends TypertRemoteService {
   static inject = ['speechToText', 'typert']
-  static Config: z<Config> = z.object({
+  static Config = z.object({
     maxAudioBytes: z.natural().min(46).default(4 * 1024 * 1024),
     maxDurationSeconds: z.number().min(1).default(120),
+    maxFrameSamples: z.natural().min(128).max(1600).default(1600),
+    maxPendingSamples: z.natural().min(1600).default(32000),
+    consumerTimeoutMs: z.natural().min(1000).default(15_000),
+    maxTranscriptBytes: z.natural().min(128).default(128 * 1024),
   })
 
   constructor(ctx: Context, private readonly config: Config) {
@@ -79,6 +93,71 @@ export default class SpeechController extends TypertRemoteService {
   @Remote
   cancelPreparation(providerId: SpeechProviderId): Promise<void> { return this.ctx.speechToText.cancelPreparation(providerId) }
 
+  /** Upload a single live recording without submitting or mutating a Session.
+   * @param selection - pinned recognizer and language, independent from synthesis.
+   * @param signal - native Remote cancellation; disconnect never reconnects or replays audio.
+   * @returns PCM intake limits, live transcript and measured usage.
+   */
+  @Remote({ mode: 'stream' })
+  async *stream(selection: SpeechSelection, signal: AbortSignal): RemoteStream<SpeechStreamFrame, SpeechStreamCommand> {
+    const invocation = this.ctx.invocation
+    if (invocation === undefined) throw new Error('Live recognition requires a Remote invocation')
+    const deadline = new AbortController()
+    const timer = setTimeout(() => { deadline.abort(new SpeechFailure('timeout')) }, this.config.maxDurationSeconds * 1000 + this.config.consumerTimeoutMs)
+    const combined = AbortSignal.any([signal, deadline.signal])
+    let usage: import('@deepseek-ai/dsh-experimental-speech-to-text/types').SpeechUsage = { inputTokens: null, outputTokens: null, audioSeconds: null }
+    try {
+      const spec = this.ctx.speechToText.resolveStream(selection)
+      const format = spec.provider.info.streaming
+      if (format === undefined) throw new SpeechFailure('unconfigured')
+      const sampleRate = format.sampleRate, limits = this.config
+      if (limits.maxPendingSamples < limits.maxFrameSamples) throw new SpeechFailure('limit')
+      const upstream = invocation.uplink<SpeechStreamCommand>()
+      async function* audio(taskSignal: AbortSignal): AsyncIterable<Uint8Array> {
+        let sequence = 0, samples = 0
+        const sourceSignal = AbortSignal.any([combined, taskSignal]), iterator = upstream[Symbol.asyncIterator]()
+        while (true) {
+          const item = await receive(iterator.next(), sourceSignal)
+          if (item.done) throw new SpeechFailure('protocol')
+          const command = item.value
+          if (command.kind === 'finish') {
+            if (command.samples !== samples) throw new SpeechFailure('protocol')
+            return
+          }
+          if (command.sequence !== sequence || command.startSample !== samples
+            || command.audioBase64.length > Math.ceil(limits.maxFrameSamples * 2 / 3) * 4) throw new SpeechFailure('protocol')
+          const bytes = Buffer.from(command.audioBase64, 'base64')
+          if (bytes.toString('base64') !== command.audioBase64 || bytes.byteLength === 0 || bytes.byteLength % 2
+            || bytes.byteLength > limits.maxFrameSamples * 2) throw new SpeechFailure('protocol')
+          samples += bytes.byteLength / 2; sequence++
+          if (samples > sampleRate * limits.maxDurationSeconds || samples * 2 > limits.maxAudioBytes) throw new SpeechFailure('limit')
+          yield bytes
+        }
+      }
+      yield { kind: 'ready', sampleRate, limits, maxDurationSeconds: limits.maxDurationSeconds }
+      let textBytes = 0
+      const sentences = new Map<number, number>()
+      for await (const event of this.ctx.speechToText.stream(spec, audio, combined)) {
+        if (event.kind === 'usage' || event.kind === 'done') usage = event.usage
+        if (event.kind === 'sentence') {
+          const bytes = Buffer.byteLength(event.text) + 64
+          textBytes += bytes - (sentences.get(event.id) ?? 0); sentences.set(event.id, bytes)
+          if (textBytes > limits.maxTranscriptBytes) throw new SpeechFailure('limit', usage)
+        }
+        yield event
+      }
+    } catch (error) {
+      signal.throwIfAborted()
+      const failure = speechFailureOf(error) ?? speechFailureOf(combined.reason)
+      // Ordered business failure preserves validated partial text before the carrier closes.
+      yield { kind: 'failed', reason: failure?.code ?? 'unknown', usage: {
+        inputTokens: failure?.usage.inputTokens ?? usage.inputTokens,
+        outputTokens: failure?.usage.outputTokens ?? usage.outputTokens,
+        audioSeconds: failure?.usage.audioSeconds ?? usage.audioSeconds,
+      } }
+    } finally { clearTimeout(timer); deadline.abort() }
+  }
+
   /**
    * Validate and transcribe one recording through the explicit provider selection.
    * @param request - canonical WAV encoded as base64, provider id and language hint.
@@ -104,8 +183,8 @@ export default class SpeechController extends TypertRemoteService {
       return await this.ctx.speechToText.transcribe(spec, signal)
     } catch (error) {
       signal.throwIfAborted()
-      const reason = error instanceof Error ? error.message : String(error)
-      throw new RemoteError('speech/transcription-failed', reason, { reason })
+      const reason = speechFailureOf(error)?.code ?? 'unknown'
+      throw new RemoteError('speech/transcription-failed', 'Recognition failed; check voice settings and connection', { reason })
     }
   }
 }

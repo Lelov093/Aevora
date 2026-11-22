@@ -45,6 +45,30 @@
   cursor: pointer;
 }
 
+.themeCube[data-theme='azure-bloom'] {
+  border-color: #b5d8ed;
+  background: linear-gradient(135deg, rgb(255 255 255 / 72%), rgb(237 250 255 / 76%));
+  box-shadow: 0 8px 22px rgb(33 97 143 / 7%);
+}
+
+.themeCube[data-theme='azure-bloom'].selected {
+  border-color: #83bde1;
+  background: var(--aevora-selection-gradient, linear-gradient(102deg, #dbeeff, #cef9f5));
+  box-shadow: 0 10px 24px rgb(33 97 143 / 12%);
+}
+
+.themeCube[data-theme='aevora'] {
+  border-color: #a7d9eb;
+  background: linear-gradient(135deg, rgb(255 255 255 / 78%), rgb(233 250 255 / 84%));
+  box-shadow: 0 10px 24px rgb(49 129 164 / 10%);
+}
+
+.themeCube[data-theme='aevora'].selected {
+  border-color: #62bbef;
+  background: var(--aevora-selection-gradient, linear-gradient(102deg, #dff4ff, #d9fff2));
+  box-shadow: 0 12px 28px rgb(49 129 164 / 15%);
+}
+
 @media (hover: hover) {
   .themeCube:hover:not(.selected) {
     background: var(--dsw-alias-interactive-bg-hover);
@@ -58,9 +82,8 @@
   border-color: var(--dsw-static-neutral-bluish-400);
 }
 
-/* Narrow settings panel: all three cubes share one row instead of wrapping to
-   two. The equal basis and the tighter horizontal padding keep a four-glyph
-   label ("跟随系统") on one line at a 390px viewport. */
+/* Narrow settings panel: equal bases and tighter padding keep the five product
+   choices readable while allowing the row to wrap at the available width. */
 @media (max-width: 767px) {
   :global(html:not([data-windows-titlebar]):not([data-platform='darwin'])) .themeCube {
     flex: 1 1 0;

@@ -15,15 +15,15 @@
 }
 
 .dot[data-state='done'] {
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--aevora-color-mint, var(--dsw-alias-state-success-primary));
 }
 
 .dot[data-state='warning'] {
-  color: var(--dsw-alias-state-warn-primary);
+  color: var(--aevora-color-warm, var(--dsw-alias-state-warn-primary));
 }
 
 .dot[data-state='error'] {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--aevora-color-pink, var(--dsw-alias-state-error-primary));
 }
 
 /* Idle is the absence of activity and uses the theme's neutral state step. */
@@ -36,7 +36,7 @@
  * share one 1.5s period so pinning their start times aligns them together. */
 .spinner {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--aevora-color-blue, var(--dsw-alias-label-tertiary));
 }
 
 .spinnerMotion {
@@ -95,6 +95,6 @@
 }
 
 .step { display: inline-flex; flex: none; align-items: center; justify-content: center; box-sizing: border-box; border-radius: 50%; corner-shape: round; border: 1.5px solid var(--dsw-alias-label-tertiary); color: var(--dsw-alias-label-primary-foreground); }
-.step[data-state='done'] { border-color: var(--dsw-alias-state-success-primary); background: var(--dsw-alias-state-success-primary); }
-.step[data-state='error'] { border-color: var(--dsw-alias-state-error-primary); background: var(--dsw-alias-state-error-primary); }
-.step[data-state='warning'] { border-color: var(--dsw-alias-state-warn-primary); }
+.step[data-state='done'] { border-color: var(--aevora-color-mint, var(--dsw-alias-state-success-primary)); background: var(--aevora-color-mint, var(--dsw-alias-state-success-primary)); }
+.step[data-state='error'] { border-color: var(--aevora-color-pink, var(--dsw-alias-state-error-primary)); background: var(--aevora-color-pink, var(--dsw-alias-state-error-primary)); }
+.step[data-state='warning'] { border-color: var(--aevora-color-warm, var(--dsw-alias-state-warn-primary)); }
